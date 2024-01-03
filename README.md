@@ -17,11 +17,11 @@ OAuth2 defines four roles (as described in https://datatracker.ietf.org/doc/html
 
 Conceptually, an OAuth2 enabled architecture looks like the following picture.
 
-![](oauth2/img/OAuth2 enabled architecture.png)
+![](oauth2/img/OAuth2_enabled_architecture.png)
 
 ### Keycloak
 Keycloak is an Open Source Identity and Access Management technology that allows to add authentication mechanisms to applications, securing them with minimum effort.
 
 Keycloak provides user federation, strong authentication, user management, fine-grained authorization, and more.
 
-![](oauth2/img/REST service secure architecture with Keycloak - No SSL.png)
+![](oauth2/img/Keycloak_NoSSL.png)
