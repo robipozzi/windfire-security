@@ -11,6 +11,7 @@ coffee3="${coffee} ${coffee} ${coffee}"
 ##### Terminal Colors - END
 
 ###### Variable section - START
+KEYCLOAK_HOME=/Users/robertopozzi/software/keycloak-23.0.3
 KEYCLOAK_DOCKER_IMAGE=quay.io/keycloak/keycloak
 KEYCLOAK_DOCKER_IMAGE_VERSION=23.0.3
 KEYCLOAK_CONTAINER_NAME=keycloak
