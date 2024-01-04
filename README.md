@@ -1,9 +1,9 @@
 # Windfire Security
-- [Overview](#overview)
+- [Introduction](#introduction)
 - [OAuth2](#OAuth2)
     - [Keycloak](#Keycloak)
 
-## Overview
+## Introduction
 This repository contains code, scripts and various artifacts related to security implementation for Windfire applications.
 
 ## OAuth2
@@ -25,3 +25,18 @@ Keycloak is an Open Source Identity and Access Management technology that allows
 Keycloak provides user federation, strong authentication, user management, fine-grained authorization, and more.
 
 ![](oauth2/img/Keycloak_NoSSL.png)
+
+As we all modern technologies, Keycloak can be deployed in different way, the easiest way for my purposes is to use the Docker.
+
+A comprehensive guide on how to run Keycloak in Docker is available on Keycloak official website https://www.keycloak.org/getting-started/getting-started-docker.
+
+A convenient script **[start-keycloak.sh](oauth2/keycloak/start-keycloak.sh)** is provided with the following default parameters values to run a Keycloak Docker container:
+* **Keycloak Docker Image** set to *quay.io/keycloak/keycloak*
+* **Keycloak Docker Image version** set to *23.0.3*
+* **Keycloak Container name** set to *keycloak*
+* **Keycloak Port** remapped and exposed on *8081*
+* **Keycloak Admin console username** rset to *admin*
+
+The script will only require to input the Password for Keycloak Admin console.
+
+With these default values, once the container is running, Keycloak Admin Console will be available at **http://localhost:8081/admin**.
