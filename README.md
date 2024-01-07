@@ -37,6 +37,8 @@ A convenient script **[start-keycloak.sh](oauth2/keycloak/start-keycloak.sh)** i
 #### Run Keycloak as server on localhost
 In case this option is selected, the script just runs the **<KEYCLOAK_HOME>/bin/kc.sh** command provided by Keycloak; **KEYCLOAK_HOME** needs to be set in **[setenv.sh](setenv.sh)** to point to actual Keycloak installation directory on your platform.
 
+Keycloak Admin console will respond on http://localhost:8080/admin. The first time you launch it, you will need to create an admin user that will secure all the following accesses, follow the instructions at *https://www.keycloak.org/getting-started/getting-started-zip* to create admin credentials.
+
 #### Run Keycloak on Docker
 In case Docker is selected, Keycloak will run with the following default parameters values:
 * **Keycloak Docker Image** set to *quay.io/keycloak/keycloak*
