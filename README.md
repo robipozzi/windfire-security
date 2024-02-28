@@ -1,13 +1,24 @@
 # Windfire Security
 - [Introduction](#introduction)
-- [OAuth2](#OAuth2)
+- [Security protocols](#securityprotocols)
+    - [OAuth2](#OAuth2)
+- [Identity and access management](#identityandaccessmanagement)
     - [Keycloak](#Keycloak)
 
 ## Introduction
 This repository contains code, scripts and various artifacts related to security implementation for Windfire applications.
 
-## OAuth2
-OAuth2 plays a pivotal role in securing APIs and applications by providing a standardized way of handling authentication.
+## Security protocols
+Security protocols are foundational elements of modern IT systems, serving as standardized frameworks for securing communication and data exchange over networks. 
+
+These protocols define rules and procedures that govern authentication, encryption, and data integrity, ensuring confidentiality, integrity, and availability of information. 
+
+By implementing security protocols such as SSL/TLS, SSH, and IPsec, organizations can establish secure connections, authenticate users and devices, and protect against unauthorized access and data breaches. 
+
+Security protocols play a critical role in fortifying IT infrastructures, safeguarding sensitive data, and upholding the trust and integrity of digital interactions.
+
+### OAuth2
+OAuth2 is a security protocol playing a pivotal role in securing APIs and applications by providing a standardized way of handling authentication.
 
 OAuth2 defines four roles (as described in https://datatracker.ietf.org/doc/html/rfc6749#section-1.1):
 * **Resource Owner**: An entity capable of granting access to a protected resource. When the resource owner is a person, it is referred to as an end-user.
@@ -18,6 +29,13 @@ OAuth2 defines four roles (as described in https://datatracker.ietf.org/doc/html
 Conceptually, an OAuth2 enabled architecture looks like the following picture.
 
 ![](oauth2/img/OAuth2_enabled_architecture.png)
+
+## Identity and access management
+Identity and Access Management (IAM) systems are fundamental components of modern cybersecurity strategies, providing organizations with the means to manage and control access to their digital resources. 
+
+IAM systems enable businesses to securely authenticate users, grant appropriate permissions, and enforce policies across diverse IT environments. 
+
+By centralizing user identities and access controls, IAM solutions streamline user provisioning, simplify compliance efforts, and mitigate security risks associated with unauthorized access. These systems play a crucial role in safeguarding sensitive data, protecting against insider threats, and ensuring regulatory compliance within organizations.
 
 ### Keycloak
 Keycloak is an Open Source Identity and Access Management technology that allows to add authentication mechanisms to applications, securing them with minimum effort.
