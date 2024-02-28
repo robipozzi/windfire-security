@@ -1,8 +1,8 @@
 # Windfire Security
 - [Introduction](#introduction)
-- [Security protocols](#securityprotocols)
+- [Security protocols](#security-protocols)
     - [OAuth2](#OAuth2)
-- [Identity and access management](#identityandaccessmanagement)
+- [Identity and access management](#identity-and-access-management)
     - [Keycloak](#Keycloak)
 
 ## Introduction
