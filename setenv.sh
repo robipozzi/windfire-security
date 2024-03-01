@@ -11,10 +11,16 @@ coffee3="${coffee} ${coffee} ${coffee}"
 ##### Terminal Colors - END
 
 ###### Variable section - START
+## Keycloak settings
 KEYCLOAK_HOME=/Users/robertopozzi/software/keycloak-23.0.3
 KEYCLOAK_DOCKER_IMAGE=quay.io/keycloak/keycloak
 KEYCLOAK_DOCKER_IMAGE_VERSION=23.0.3
 KEYCLOAK_CONTAINER_NAME=keycloak
 KEYCLOAK_PORT=8081
 KEYCLOAK_USERNAME=admin
+## Keycloak Security settings
+DEFAULT_SSL_DIR=$HOME/dev/windfire-security/keycloak/security/ssl
+DEFAULT_KEYSTORE=server.keystore
+DEFAULT_KEYSTORE_ALIAS=localhost
+DEFAULT_VALIDITY=1000
 ###### Variable section - END

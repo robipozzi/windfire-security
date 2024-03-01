@@ -28,7 +28,7 @@ OAuth2 defines four roles (as described in https://datatracker.ietf.org/doc/html
 
 Conceptually, an OAuth2 enabled architecture looks like the following picture.
 
-![](oauth2/img/OAuth2_enabled_architecture.png)
+![](img/OAuth2_enabled_architecture.png)
 
 ## Identity and access management
 Identity and Access Management (IAM) systems are fundamental components of modern cybersecurity strategies, providing organizations with the means to manage and control access to their digital resources. 
@@ -42,13 +42,13 @@ Keycloak is an Open Source Identity and Access Management technology that allows
 
 Keycloak provides user federation, strong authentication, user management, fine-grained authorization, and more.
 
-![](oauth2/img/Keycloak_NoSSL.png)
+![](img/Keycloak_NoSSL.png)
 
 As we all modern technologies, Keycloak can be deployed in different way, the easiest way for my purposes is to use the Docker.
 
 A comprehensive guide on how to run Keycloak in Docker is available on Keycloak official website https://www.keycloak.org/getting-started/getting-started-docker.
 
-A convenient script **[start-keycloak.sh](oauth2/keycloak/start-keycloak.sh)** is provided to run Keycloak in
+A convenient script **[start-keycloak.sh](keycloak/start-keycloak.sh)** is provided to run Keycloak in
 1. Server on localhost
 2. Docker container
 
@@ -68,3 +68,6 @@ In case Docker is selected, Keycloak will run with the following default paramet
 The script will only require to input the Password for Keycloak Admin console.
 
 With these default values, once the container is running, Keycloak Admin Console will be available at **http://localhost:8081/admin**.
+
+#### Secure Keycloak server with TLS
+[TODO]
