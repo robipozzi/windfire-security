@@ -68,6 +68,10 @@ I referred to official Keycloak documentation intsructions *https://www.keycloak
 
 A convenient script **[createSSL.sh](keycloak/security/createSSL.sh)** is provided to generate a server keystore in *ssl* subfolder.
 
+The script currently uses keytool to generate the keystore; once keytool command is launched, asks for some info, my choices are something similar to this following
+
+![](img/keytool_create_keystore.png)
+
 Once the server keystore has been generated, run **[setupKeycloakMode.sh](keycloak/setupKeycloakMode.sh)**, which provides two options to enable and disable SSL respectively
 
 ![](img/Select_enable_disable_SSL.png)
