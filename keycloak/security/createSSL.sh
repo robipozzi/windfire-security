@@ -6,6 +6,7 @@ FUNCTION_CHOICE=
 FUNCTION=
 KEYSTORE=$1
 VALIDITY=$2
+KEYSTORE_PASSWORD=
 # ##### Variable section - END
 
 # ***** Function section - START
@@ -45,12 +46,15 @@ createSSLKey()
     if [ -z $KEYSTORE ]; then 
 		inputKeystore
 	fi
+    if [ -z $KEYSTORE_PASSWORD ]; then 
+		inputKeystorePassword
+	fi
     if [ -z $VALIDITY ]; then 
 		inputValidity
 	fi
-    #CMD_RUN="keytool -keystore $DEFAULT_SSL_DIR/$KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -validity $VALIDITY -genkey -keyalg RSA -storetype pkcs12 -ext SAN=DNS:localhost,IP:127.0.0.1"
-    CMD_RUN="keytool -keystore $DEFAULT_SSL_DIR/$KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -validity $VALIDITY -genkeypair -keyalg RSA -keysize 2048 -keypass secret -storepass secret"
-    ##      "keytool -keystore $DEFAULT_SSL_DIR/$KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -validity $VALIDITY -genkeypair -keyalg RSA -keysize 2048 -dname "cn=Server Administrator,o=Acme,c=GB" -keypass secret -storepass secret"
+    
+    CMD_RUN="keytool -keystore $DEFAULT_SSL_DIR/$KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -validity $VALIDITY -genkeypair -keyalg RSA -keysize 2048 -keypass $KEYSTORE_PASSWORD -storepass $KEYSTORE_PASSWORD"
+
     echo ${cyn}Creating keystore using following command:${end} ${grn}$CMD_RUN${end}
     $CMD_RUN
     echo
@@ -68,6 +72,21 @@ inputKeystore()
             KEYSTORE=$DEFAULT_KEYSTORE
         fi
     fi
+}
+
+inputKeystorePassword()
+{
+    echo ${grn}Enter keystore password
+	read -s KEYSTORE_PASSWORD
+	setKeystorePassword
+}
+
+setKeystorePassword()
+{  
+	if [ -z $KEYSTORE_PASSWORD ]; then
+		echo ${red}No Keystore password input${end}
+		inputKeystorePassword
+	fi
 }
 
 inputValidity()
