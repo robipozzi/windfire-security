@@ -77,6 +77,8 @@ If *option 1* is selected, the script does the following:
 1. it copies server keystore to **<KEYCLOAK_HOME>/conf** folder
 2. it runs **<KEYCLOAK_HOME>/bin/kc.sh build** command to rebuild Keycloak configuration and fully enable SSL
 
+**[TODO]**
+
 #### Run Keycloak on Docker
 In case Docker is selected, Keycloak will run with the following default parameters values:
 * **Keycloak Docker Image** set to *quay.io/keycloak/keycloak*
@@ -89,3 +91,9 @@ The script will only require to input the Password for Keycloak Admin console.
 
 With these default values, once the container is running, Keycloak Admin Console will be available at **http://localhost:8081/admin**.
 
+#### Test Keycloak functioning
+A convenient script **[testKeycloak.sh](keycloak/test/testKeycloak.sh)** is provided to run a simple curl command to authenticate with Keycloak and see if everything is setup and works fine.
+
+The script allows to select whether SSL on Keycloak server is enabled or not
+
+![](img/Select_test.png)
