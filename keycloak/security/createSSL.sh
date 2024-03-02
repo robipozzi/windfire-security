@@ -52,10 +52,8 @@ createSSLKey()
     if [ -z $VALIDITY ]; then 
 		inputValidity
 	fi
-    
     CMD_RUN="keytool -keystore $DEFAULT_SSL_DIR/$KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -validity $VALIDITY -genkeypair -keyalg RSA -keysize 2048 -keypass $KEYSTORE_PASSWORD -storepass $KEYSTORE_PASSWORD"
-
-    echo ${cyn}Creating keystore using following command:${end} ${grn}$CMD_RUN${end}
+    echo ${cyn}Creating keystore launching keytool command ...${end}
     $CMD_RUN
     echo
 }
