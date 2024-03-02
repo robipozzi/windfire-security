@@ -1,7 +1,7 @@
 source ../setenv.sh
 
 # ##### Variable section - START
-SCRIPT=setupKeycloak.sh
+SCRIPT=setupKeycloakMode.sh
 FUNCTION_CHOICE=
 FUNCTION=
 # ##### Variable section - END
@@ -49,6 +49,8 @@ enableSSL()
     echo ${cyn}Rebuilding Keycloak configuration using following command:${end} ${grn}$CMD_RUN${end}
     $CMD_RUN
     echo
+    echo ${blu}***** Keycloak is set to run with SSL enabled${end}
+    echo
 }
 
 disableSSL()
@@ -60,6 +62,8 @@ disableSSL()
 
     echo ${blu}***** Removing $DEFAULT_KEYSTORE from $KEYCLOAK_HOME/conf ...${end}
     rm -rf $KEYCLOAK_HOME/conf/$DEFAULT_KEYSTORE
+    echo
+    echo ${blu}***** Keycloak is set to run with SSL disabled${end}
     echo
 }
 # ***** Function section - END

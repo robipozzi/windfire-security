@@ -18,7 +18,7 @@ main()
 runSelectPlatform()
 {
 	echo ${grn}Select Keycloak run platform : ${end}
-    echo "${grn}1. Server on Localhost${end}"
+    echo "${grn}1. Server on Localhost (No SSL)${end}"
 	echo "${grn}2. Server on Localhost (SSL enabled)${end}"
 	echo "${grn}3. Docker${end}"
 	read PLATFORM_OPTION

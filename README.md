@@ -48,14 +48,26 @@ As we all modern technologies, Keycloak can be deployed in different way, the ea
 
 A comprehensive guide on how to run Keycloak in Docker is available on Keycloak official website https://www.keycloak.org/getting-started/getting-started-docker.
 
-A convenient script **[start-keycloak.sh](keycloak/start-keycloak.sh)** is provided to run Keycloak in
-1. Server on localhost
-2. Docker container
+A convenient script **[start-keycloak.sh](keycloak/start-keycloak.sh)** is provided to run Keycloak in one of the following mode
+
+![](img/Select_how_to_run_keycloak.png)
+
+1. Server on Localhost (No SSL)
+2. Server on Localhost (SSL enabled)
+3. Docker container
 
 #### Run Keycloak as server on localhost
-In case this option is selected, the script just runs the **<KEYCLOAK_HOME>/bin/kc.sh** command provided by Keycloak; **KEYCLOAK_HOME** needs to be set in **[setenv.sh](setenv.sh)** to point to actual Keycloak installation directory on your platform.
+In case option 1 is selected, the script just runs the **<KEYCLOAK_HOME>/bin/kc.sh** command provided by Keycloak; **KEYCLOAK_HOME** needs to be set in **[setenv.sh](setenv.sh)** to point to actual Keycloak installation directory on your platform.
 
 Keycloak Admin console will respond on http://localhost:8080/admin. The first time you launch it, you will need to create an admin user that will secure all the following accesses, follow the instructions at *https://www.keycloak.org/getting-started/getting-started-zip* to create admin credentials.
+
+#### Secure and run Keycloak server with TLS
+Keycloak can be configured to run with SSL enabled, loading the required certificate infrastructure using files in PEM format or from a Java Keystore. When both alternatives are configured, the PEM files takes precedence over the Java Keystores.
+
+I referred to official Keycloak documentation intsructions *https://www.keycloak.org/server/enabletls* to understand how to enable SSL on Keycloak server.
+[TODO]
+
+
 
 #### Run Keycloak on Docker
 In case Docker is selected, Keycloak will run with the following default parameters values:
@@ -69,5 +81,3 @@ The script will only require to input the Password for Keycloak Admin console.
 
 With these default values, once the container is running, Keycloak Admin Console will be available at **http://localhost:8081/admin**.
 
-#### Secure Keycloak server with TLS
-[TODO]
