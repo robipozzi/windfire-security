@@ -1,2 +1,2 @@
 *.DS_Store
-security/ssl/server.keystore
+keycloak/security/ssl/server.keystore
