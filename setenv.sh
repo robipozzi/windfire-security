@@ -18,9 +18,10 @@ KEYCLOAK_DOCKER_IMAGE_VERSION=23.0.3
 KEYCLOAK_CONTAINER_NAME=keycloak
 KEYCLOAK_SERVER_ADDRESS=localhost
 KEYCLOAK_SERVER_PORT=8080
+KEYCLOAK_TLS_SERVER_PORT=8443
 KEYCLOAK_USERNAME=admin
 ## Keycloak Security settings
-DEFAULT_SSL_DIR=$HOME/dev/windfire-security/keycloak/security/ssl
+DEFAULT_TLS_DIR=$HOME/dev/windfire-security/keycloak/security/tls
 DEFAULT_KEYSTORE=server.keystore
 DEFAULT_KEYSTORE_ALIAS=localhost
 DEFAULT_VALIDITY=1000

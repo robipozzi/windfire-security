@@ -18,8 +18,8 @@ main()
 runSelectPlatform()
 {
 	echo ${grn}Select Keycloak run platform : ${end}
-    echo "${grn}1. Server on Localhost (No SSL)${end}"
-	echo "${grn}2. Server on Localhost (SSL enabled)${end}"
+    echo "${grn}1. Server on Localhost (No TLS)${end}"
+	echo "${grn}2. Server on Localhost (TLS enabled)${end}"
 	echo "${grn}3. Docker${end}"
 	read PLATFORM_OPTION
 	setPlatform
@@ -33,7 +33,7 @@ setPlatform()
 		2)  if [ -z $KEYSTORE_PASSWORD ]; then 
 				inputKeystorePassword
 			fi
-			echo $KEYCLOAK_HOME/bin/kc.sh start --http-enabled=false --https-key-store-password=$KEYSTORE_PASSWORD --hostname=localhost
+			$KEYCLOAK_HOME/bin/kc.sh start --http-enabled=false --https-key-store-password=$KEYSTORE_PASSWORD --hostname=localhost
 			;;
         3)  if [ -z $KEYCLOAK_PASSWORD ]; then 
 				inputKeycloakPassword

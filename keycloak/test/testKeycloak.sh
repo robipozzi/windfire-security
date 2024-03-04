@@ -30,8 +30,8 @@ main()
 printChoosePlatform()
 {
 	echo ${grn}Select Keycloak platform to test: ${end}
-    echo "${grn}1. Server on Localhost (No SSL)${end}"
-	echo "${grn}2. Server on Localhost (SSL enabled)${end}"
+    echo "${grn}1. Server on Localhost (No TLS)${end}"
+	echo "${grn}2. Server on Localhost (TLS enabled with self signed certificate)${end}"
 	read PLATFORM_OPTION
 	setFunction
 }
@@ -39,9 +39,9 @@ printChoosePlatform()
 setFunction()
 {
 	case $PLATFORM_OPTION in
-		1)  FUNCTION=curlNoSSL
+		1)  FUNCTION=curlNoTLS
 			;;
-		2)  FUNCTION=curlSSL
+		2)  FUNCTION=curlSelfSignedTLS
 			;;
 		*) 	printf "\n${red}No valid option selected${end}\n"
 			printChooseFunction
@@ -49,8 +49,10 @@ setFunction()
 	esac
 }
 
-curlNoSSL()
+curlNoTLS()
 {
+	echo ${blu}Running curl on HTTP endpoint${end}
+	echo
 	curl -X POST http://$KEYCLOAK_SERVER_ADDRESS:$KEYCLOAK_SERVER_PORT/realms/$REALM_ID/protocol/openid-connect/token \
 		-H "Accept: application/json" \
 		-H "Content-Type: application/x-www-form-urlencoded" \
@@ -58,13 +60,16 @@ curlNoSSL()
 		-d "client_id=$REALM_ID&username=$REALM_USERNAME&password=$REALM_PASSWORD&grant_type=$GRANT_TYPE"
 }
 
-curlSSL()
+curlSelfSignedTLS()
 {
-	curl -X POST http://$KEYCLOAK_SERVER_ADDRESS:$KEYCLOAK_SERVER_PORT/realms/$REALM_ID/protocol/openid-connect/token \
+	echo ${blu}Running curl on HTTPS endpoint, disabling TLS certificate verification${end}
+	echo
+	curl -X POST https://$KEYCLOAK_SERVER_ADDRESS:$KEYCLOAK_TLS_SERVER_PORT/realms/$REALM_ID/protocol/openid-connect/token \
 		-H "Accept: application/json" \
 		-H "Content-Type: application/x-www-form-urlencoded" \
 		-H "cache-control: no-cache" \
-		-d "client_id=$REALM_ID&username=$REALM_USERNAME&password=$REALM_PASSWORD&grant_type=$GRANT_TYPE"
+		-d "client_id=$REALM_ID&username=$REALM_USERNAME&password=$REALM_PASSWORD&grant_type=$GRANT_TYPE" \
+		-k
 }
 
 inputRealmId()

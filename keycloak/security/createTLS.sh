@@ -1,7 +1,7 @@
 source ../../setenv.sh
 
 # ##### Variable section - START
-SCRIPT=createSSL.sh
+SCRIPT=createTLS.sh
 FUNCTION_CHOICE=
 FUNCTION=
 KEYSTORE=$1
@@ -12,14 +12,14 @@ KEYSTORE_PASSWORD=
 # ***** Function section - START
 main()
 {
-    mkdir -p $DEFAULT_SSL_DIR
+    mkdir -p $DEFAULT_TLS_DIR
     $FUNCTION
 }
 
 printChooseFunction()
 {
 	echo ${grn}Choose function : ${end}
-    echo "${grn}1. Generate server keystore${end}"
+    echo "${grn}1. Generate server keystore (Java Keystore)${end}"
 	read FUNCTION_CHOICE
 	setFunctionChoice
 }
@@ -27,7 +27,7 @@ printChooseFunction()
 setFunctionChoice()
 {
 	case $FUNCTION_CHOICE in
-		1)  FUNCTION=createSSLKey
+		1)  FUNCTION=createTLSKey
 			;;
 		*) 	printf "\n${red}No valid option selected${end}\n"
 			printChooseFunction
@@ -35,14 +35,14 @@ setFunctionChoice()
 	esac
 }
 
-createSSLKey()
+createTLSKey()
 {
-    echo ${blu}*********************************${end}
-    echo ${blu}***** Generate SSL keystore *****${end}
-    echo ${blu}*********************************${end}
+    echo ${blu}**********************************${end}
+    echo ${blu}***** Generate Java keystore *****${end}
+    echo ${blu}**********************************${end}
     echo
 
-    echo ${blu}***** Creating a new keystore ...${end}
+    echo ${blu}***** Creating a new Java keystore ...${end}
     if [ -z $KEYSTORE ]; then 
 		inputKeystore
 	fi
@@ -52,8 +52,8 @@ createSSLKey()
     if [ -z $VALIDITY ]; then 
 		inputValidity
 	fi
-    CMD_RUN="keytool -keystore $DEFAULT_SSL_DIR/$KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -validity $VALIDITY -genkeypair -keyalg RSA -keysize 2048 -keypass $KEYSTORE_PASSWORD -storepass $KEYSTORE_PASSWORD"
-    echo ${cyn}Creating keystore launching keytool command ...${end}
+    CMD_RUN="keytool -keystore $DEFAULT_TLS_DIR/$KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -validity $VALIDITY -genkeypair -keyalg RSA -keysize 2048 -keypass $KEYSTORE_PASSWORD -storepass $KEYSTORE_PASSWORD"
+    echo ${cyn}Creating Java keystore launching keytool command ...${end}
     $CMD_RUN
     echo
 }
