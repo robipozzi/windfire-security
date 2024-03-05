@@ -62,6 +62,18 @@ curlNoTLS()
 
 curlSelfSignedTLS()
 {
+	echo ${blu}Running curl on HTTPS endpoint${end}
+	echo
+	curl -X POST https://$KEYCLOAK_SERVER_ADDRESS:$KEYCLOAK_TLS_SERVER_PORT/realms/$REALM_ID/protocol/openid-connect/token \
+	    --cacert $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_CACERT_PEM \
+		-H "Accept: application/json" \
+		-H "Content-Type: application/x-www-form-urlencoded" \
+		-H "cache-control: no-cache" \
+		-d "client_id=$REALM_ID&username=$REALM_USERNAME&password=$REALM_PASSWORD&grant_type=$GRANT_TYPE"
+}
+
+curlSelfSignedTLSwithNoCertverification()
+{
 	echo ${blu}Running curl on HTTPS endpoint, disabling TLS certificate verification${end}
 	echo
 	curl -X POST https://$KEYCLOAK_SERVER_ADDRESS:$KEYCLOAK_TLS_SERVER_PORT/realms/$REALM_ID/protocol/openid-connect/token \

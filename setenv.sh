@@ -23,6 +23,22 @@ KEYCLOAK_USERNAME=admin
 ## Keycloak Security settings
 DEFAULT_TLS_DIR=$HOME/dev/windfire-security/keycloak/security/tls
 DEFAULT_KEYSTORE=server.keystore
-DEFAULT_KEYSTORE_ALIAS=localhost
+DEFAULT_KEYSTORE_ALIAS=keycloak
 DEFAULT_VALIDITY=1000
+DEFAULT_CSR=keycloak.csr
+
+# Certificate authority settings
+DEFAULT_CA_KEYSTORE=ca_keycloak.jks
+DEFAULT_CA_ALIAS=ca_keycloak
+DEFAULT_CACERT=ca_keycloak.crt
+DEFAULT_CACERT_PEM=ca_keycloak.pem
+
+# Signed certificate settings
+DEFAULT_SERVER_CERTIFICATE=keycloak.crt
+
+# Truststore settings
+DEFAULT_TRUSTSTORE_DIR=$HOME/opt/keycloak/ssl
+DEFAULT_TRUSTSTORE=keycloak.truststore.jks
+DEFAULT_PKCS12_TRUSTSTORE=keycloak.truststore.p12
+DEFAULT_PEM_TRUSTSTORE=keycloak.truststore.pem
 ###### Variable section - END

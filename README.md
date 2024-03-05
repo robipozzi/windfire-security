@@ -66,7 +66,7 @@ Keycloak can be configured to run with TLS enabled, loading the required certifi
 
 I referred to official Keycloak documentation instructions *https://www.keycloak.org/server/enabletls* to enable TLS on Keycloak server.
 
-A convenient script **[createTLS.sh](keycloak/security/createTLS.sh)** is provided to generate a server keystore in *tls* subfolder.
+A convenient script **[setupTLS.sh](keycloak/security/setupTLS.sh)** is provided to generate a server keystore in *tls* subfolder.
 
 The script currently uses keytool to generate a Java keystore; for the sake of simplicity I use a self signed certificate. 
 
@@ -105,5 +105,3 @@ A convenient script **[testKeycloak.sh](keycloak/test/testKeycloak.sh)** is prov
 The script allows to select whether TLS on Keycloak server is enabled or not
 
 ![](img/Select_test.png)
-
-When running the test against a TLS enabled Keycloak server, in case a self signed certificate is used, I just disabled the certificate verification in curl, setting the *-k* option.
