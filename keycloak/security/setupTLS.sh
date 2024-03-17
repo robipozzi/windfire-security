@@ -58,7 +58,7 @@ createTLSKeyAndCsr()
     # The first step of deploying Keycloak with TLS support is to generate a public/private keypair. #
     # We will use Java's keytool command for this task.                                              #
     ##################################################################################################
-    echo ${blu}***** Creating a new keystore ...${end}
+    echo ${blu}***** Creating new keystore with alias $DEFAULT_KEYSTORE_ALIAS ...${end}
     if [ -z $KEYSTORE ]; then 
 		inputKeystore
 	fi
@@ -75,7 +75,7 @@ createTLSKeyAndCsr()
     # This signing request, when signed by a trusted CA results in the actual certificate which can then be installed in the keystore and    #
     # used for authentication purposes.                                                                                                      #
     ##########################################################################################################################################
-    echo ${blu}***** Generating a Certificate Signing Request from keystore ...${end}
+    echo ${blu}***** Generating $DEFAULT_CSR Certificate Signing Request from $KEYSTORE keystore ...${end}
     CMD_RUN="keytool -certreq -keystore $DEFAULT_TLS_DIR/$KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -file $DEFAULT_TLS_DIR/$DEFAULT_CSR"
     echo ${cyn}Generating CSR using following command:${end} ${grn}$CMD_RUN${end}
     $CMD_RUN
@@ -95,7 +95,7 @@ createCA()
     # With these steps done we can now generate our own CA that will be used to sign certificates later.                                      #
     # The CA is simply a public/private key pair and certificate that is signed by itself, and is only intended to sign other certificates.   #
     ###########################################################################################################################################
-    echo ${blu}***** Creating CA private key and CA certificate ... ${end}
+    echo ${blu}***** Creating $DEFAULT_CA_KEYSTORE CA keystore and $DEFAULT_CACERT CA certificate ... ${end}
     CMD_KEYSTORE_RUN="keytool -genkeypair -keyalg RSA -keysize 2048 -keystore $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE -alias $DEFAULT_CA_ALIAS"
     echo ${cyn}Generating CA keystore using following command:${end} ${grn}$CMD_KEYSTORE_RUN${end}
     $CMD_KEYSTORE_RUN
@@ -117,7 +117,7 @@ signCertificate()
     ############################################################################################
     # Create a server certificate signing the Certificate Signing Request using CA certificate #
     ############################################################################################
-    echo ${blu}***** Signing server certificate using CA certificate ... ${end}
+    echo ${blu}***** Signing $DEFAULT_SERVER_CERTIFICATE server certificate using CA certificate within $DEFAULT_CA_KEYSTORE CA keystore ... ${end}
     CMD_RUN="keytool -gencert -keystore $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE -alias $DEFAULT_CA_ALIAS -infile $DEFAULT_TLS_DIR/$DEFAULT_CSR -outfile $DEFAULT_TLS_DIR/$DEFAULT_SERVER_CERTIFICATE"
     echo ${cyn}Signing certificate with CA using following command:${end} ${grn}$CMD_RUN${end}
     $CMD_RUN
@@ -126,7 +126,7 @@ signCertificate()
     #######################################
     # Import CA certificate into keystore #
     #######################################
-    echo ${blu}***** Importing CA certificate into keystore ... ${end}
+    echo ${blu}***** Importing $DEFAULT_CACERT CA certificate into server keystore ... ${end}
     if [ -z $KEYSTORE ]; then 
 		inputKeystore
 	fi
@@ -138,22 +138,22 @@ signCertificate()
     ######################################################
     # Import the signed server certificate into keystore #
     ######################################################
-    echo ${blu}***** Importing signed server certificate into keystore ... ${end}
+    echo ${blu}***** Importing $DEFAULT_SERVER_CERTIFICATE signed server certificate into $DEFAULT_KEYSTORE keystore ... ${end}
     CMD_RUN="keytool -import -keystore $DEFAULT_TLS_DIR/$DEFAULT_KEYSTORE -file $DEFAULT_TLS_DIR/$DEFAULT_SERVER_CERTIFICATE -alias $DEFAULT_KEYSTORE_ALIAS"
     echo ${cyn}Importing signed certificate into keystore using following command:${end} ${grn}$CMD_RUN${end}
     $CMD_RUN
     echo
 
-    echo ${blu}***** Deleting Server Certificate Signing Request ... ${end}
-    rm -rf $DEFAULT_TLS_DIR/$DEFAULT_CSR
+    echo ${blu}***** [DISABLED] Deleting Server Certificate Signing Request ... ${end}
+    # rm -rf $DEFAULT_TLS_DIR/$DEFAULT_CSR
     echo
     
-    echo ${blu}***** Deleting CA keystore ... ${end}
-    rm -rf $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE
+    echo ${blu}***** [DISABLED] Deleting CA keystore ... ${end}
+    # rm -rf $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE
     echo
     
-    echo ${blu}***** Deleting Server certificate ... ${end}
-    rm -rf $DEFAULT_TLS_DIR/$DEFAULT_SERVER_CERTIFICATE
+    echo ${blu}***** [DISABLED] Deleting Server certificate ... ${end}
+    # rm -rf $DEFAULT_TLS_DIR/$DEFAULT_SERVER_CERTIFICATE
     echo
 }
 
@@ -166,13 +166,13 @@ createClientTruststore()
 
     ###########################################################################################################################
     # The next step is to add the generated CA to the **clients' truststore** so that the clients can trust this CA.          #
-    # In contrast to the keystore in step 1 that stores each machine's own identity, the truststore of a client stores        #
-    # all the certificates that the client should trust.                                                                      #
+    # In contrast to the keystore in step 1, the truststore of a client stores all the certificates that                      #
+    # the client should trust.                                                                                                #
     #                                                                                                                         #
     # Importing a certificate into one's truststore also means trusting all certificates that are signed by that certificate. #
-    # This attribute is called the chain of trust, and it is particularly useful when deploying TLS on a large Kafka cluster. #
+    # This attribute is called the chain of trust.                                                                            #
     ###########################################################################################################################
-    echo ${blu}***** Creating a new client JKS formatted truststore and import CA certificate ... ${end}
+    echo ${blu}***** Creating JKS formatted truststore and import $DEFAULT_CACERT CA certificate ... ${end}
     if [ -z $TRUSTSTORE ]; then 
 		inputTruststore
 	fi
@@ -181,17 +181,19 @@ createClientTruststore()
     $CMD_RUN
     echo
     
-    echo ${blu}***** Converting JKS truststore to PEM format for non Java clients ... ${end}
+    echo ${blu}***** Converting $TRUSTSTORE JKS truststore to $DEFAULT_PKCS12_TRUSTSTORE PKCS12 truststore for non Java clients ... ${end}
     CMD_PKCS_RUN="keytool -importkeystore -srckeystore $DEFAULT_TRUSTSTORE_DIR/$TRUSTSTORE -destkeystore $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_PKCS12_TRUSTSTORE -srcstoretype JKS -deststoretype PKCS12"
     echo ${cyn}Converting JKS truststore to PKCS12 format using following command:${end} ${grn}$CMD_PKCS_RUN${end}
     $CMD_PKCS_RUN
     echo
     
+    echo ${blu}***** Converting $DEFAULT_PKCS12_TRUSTSTORE PKCS12 truststore to $DEFAULT_PEM_TRUSTSTORE PEM truststore for non Java clients ... ${end}
     CMD_PEM_RUN="openssl pkcs12 -in $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_PKCS12_TRUSTSTORE -out $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_PEM_TRUSTSTORE -nodes"
     echo ${cyn}Converting PKCS12 truststore to PEM format using following command:${end} ${grn}$CMD_PEM_RUN${end}
     $CMD_PEM_RUN
     echo
     
+    echo ${blu}***** Generating $DEFAULT_CACERT_PEM PEM formatted CA Certificate from $DEFAULT_PKCS12_TRUSTSTORE PKCS12 truststore ... ${end}
     CMD_CA_PEM_RUN="openssl pkcs12 -in $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_PKCS12_TRUSTSTORE -out $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_CACERT_PEM"
     echo ${cyn}Generating CA PEM formatted certificate using following openssl command:${end} ${grn}$CMD_CA_PEM_RUN${end}
     $CMD_CA_PEM_RUN

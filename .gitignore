@@ -1,3 +1,6 @@
 *.DS_Store
-keycloak/security/tls/server.keystore
 keycloak/security/tls/ca_keycloak.crt
+keycloak/security/tls/ca_keycloak.jks
+keycloak/security/tls/keycloak.crt
+keycloak/security/tls/keycloak.csr
+keycloak/security/tls/server.keystore
