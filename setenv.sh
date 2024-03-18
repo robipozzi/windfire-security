@@ -30,11 +30,11 @@ DEFAULT_CSR=keycloak.csr
 # Certificate authority settings
 DEFAULT_CA_KEYSTORE=ca_keycloak.jks
 DEFAULT_CA_ALIAS=ca_keycloak
-DEFAULT_CACERT=ca_keycloak.crt
+DEFAULT_CACERT=ca_keycloak.cer
 DEFAULT_CACERT_PEM=ca_keycloak.pem
 
 # Signed certificate settings
-DEFAULT_SERVER_CERTIFICATE=keycloak.crt
+DEFAULT_SERVER_CERTIFICATE=keycloak.cer
 
 # Truststore settings
 DEFAULT_TRUSTSTORE_DIR=$HOME/opt/keycloak/ssl

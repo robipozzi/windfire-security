@@ -19,8 +19,8 @@ main()
 printChooseFunction()
 {
 	echo ${grn}Choose function : ${end}
-    echo "${grn}1. Generate server keystore and certificate signing request${end}"
-    echo "${grn}2. Create our own Certification Authority${end}"
+    echo "${grn}1. Create our own Certification Authority${end}"
+    echo "${grn}2. Generate server keystore and certificate signing request${end}"
     echo "${grn}3. Sign server certificate with CA${end}"
     echo "${grn}4. Create client truststore${end}"
     echo "${grn}5. Generate all TLS configuration${end}"
@@ -31,10 +31,10 @@ printChooseFunction()
 setFunctionChoice()
 {
 	case $FUNCTION_CHOICE in
-		1)  FUNCTION=createTLSKeyAndCsr
-			;;
-		2)  FUNCTION=createCA
+		1)  FUNCTION=createCA
             ;;
+        2)  FUNCTION=createTLSKeyAndCsr
+			;;
 		3)  FUNCTION=signCertificate
             ;;
         4)  FUNCTION=createClientTruststore
@@ -45,6 +45,37 @@ setFunctionChoice()
 			printChooseFunction
 			;;
 	esac
+}
+
+createCA()
+{
+    echo ${blu}****************************************************${end}
+    echo ${blu}***** Generate our own Certification Authority *****${end}
+    echo ${blu}****************************************************${end}
+    echo 
+
+    ###########################################################################################################################################
+    # A certificate authority (CA) is responsible for signing certificates. In this case we will be our own Certificate Authority.            #
+    #                                                                                                                                         #
+    # With these steps done we can now generate our own CA that will be used to sign certificates later.                                      #
+    # The CA is simply a public/private key pair and certificate that is signed by itself, and is only intended to sign other certificates.   #
+    ###########################################################################################################################################
+    echo ${blu}***** Creating $DEFAULT_CA_KEYSTORE CA keystore containing a key pair that will be used to sign $DEFAULT_CACERT CA certificate ... ${end}
+
+    CMD_KEYSTORE_RUN="keytool -genkeypair -keyalg RSA -keysize 2048 -validity $DEFAULT_VALIDITY -keystore $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE -alias $DEFAULT_CA_ALIAS"                      
+    echo ${cyn}Generating CA keystore using following command:${end} ${grn}$CMD_KEYSTORE_RUN${end}
+    $CMD_KEYSTORE_RUN
+    echo
+    
+    CMD_CERTIFICATE_RUN="keytool -exportcert -keystore $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE -alias $DEFAULT_CA_ALIAS -file $DEFAULT_TLS_DIR/$DEFAULT_CACERT"
+    echo ${cyn}Generating $DEFAULT_CACERT CA certificate using following command:${end} ${grn}$CMD_CERTIFICATE_RUN${end}
+    $CMD_CERTIFICATE_RUN
+    echo
+
+    CMD_CERTIFICATE_RUN="openssl x509 -inform der -in $DEFAULT_TLS_DIR/$DEFAULT_CACERT -out $DEFAULT_TLS_DIR/$DEFAULT_CACERT_PEM"
+    echo ${cyn}Converting CA certificate to PEM format using following command:${end} ${grn}$CMD_CERTIFICATE_RUN${end}
+    $CMD_CERTIFICATE_RUN
+    echo
 }
 
 createTLSKeyAndCsr()
@@ -65,7 +96,7 @@ createTLSKeyAndCsr()
     if [ -z $VALIDITY ]; then 
 		inputValidity
 	fi
-    CMD_RUN="keytool -genkeypair -keystore $DEFAULT_TLS_DIR/$KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -keyalg RSA -keysize 2048"
+    CMD_RUN="keytool -genkeypair -keystore $DEFAULT_TLS_DIR/$KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -keyalg RSA -keysize 2048 -validity $DEFAULT_VALIDITY"
     echo ${cyn}Creating keystore using following command:${end} ${grn}$CMD_RUN${end}
     $CMD_RUN
     echo
@@ -82,31 +113,6 @@ createTLSKeyAndCsr()
     echo
 }
 
-createCA()
-{
-    echo ${blu}****************************************************${end}
-    echo ${blu}***** Generate our own Certification Authority *****${end}
-    echo ${blu}****************************************************${end}
-    echo 
-
-    ###########################################################################################################################################
-    # A certificate authority (CA) is responsible for signing certificates. In this case we will be our own Certificate Authority.            #
-    #                                                                                                                                         #
-    # With these steps done we can now generate our own CA that will be used to sign certificates later.                                      #
-    # The CA is simply a public/private key pair and certificate that is signed by itself, and is only intended to sign other certificates.   #
-    ###########################################################################################################################################
-    echo ${blu}***** Creating $DEFAULT_CA_KEYSTORE CA keystore and $DEFAULT_CACERT CA certificate ... ${end}
-    CMD_KEYSTORE_RUN="keytool -genkeypair -keyalg RSA -keysize 2048 -keystore $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE -alias $DEFAULT_CA_ALIAS"
-    echo ${cyn}Generating CA keystore using following command:${end} ${grn}$CMD_KEYSTORE_RUN${end}
-    $CMD_KEYSTORE_RUN
-    echo
-    
-    CMD_CERTIFICATE_RUN="keytool -export -keystore $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE -alias $DEFAULT_CA_ALIAS -file $DEFAULT_TLS_DIR/$DEFAULT_CACERT"
-    echo ${cyn}Generating CA certificate using following command:${end} ${grn}$CMD_CERTIFICATE_RUN${end}
-    $CMD_CERTIFICATE_RUN
-    echo
-}
-
 signCertificate()
 {
     echo ${blu}***************************************${end}
@@ -118,7 +124,7 @@ signCertificate()
     # Create a server certificate signing the Certificate Signing Request using CA certificate #
     ############################################################################################
     echo ${blu}***** Signing $DEFAULT_SERVER_CERTIFICATE server certificate using CA certificate within $DEFAULT_CA_KEYSTORE CA keystore ... ${end}
-    CMD_RUN="keytool -gencert -keystore $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE -alias $DEFAULT_CA_ALIAS -infile $DEFAULT_TLS_DIR/$DEFAULT_CSR -outfile $DEFAULT_TLS_DIR/$DEFAULT_SERVER_CERTIFICATE"
+    CMD_RUN="keytool -gencert -keystore $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE -alias $DEFAULT_CA_ALIAS -infile $DEFAULT_TLS_DIR/$DEFAULT_CSR -outfile $DEFAULT_TLS_DIR/$DEFAULT_SERVER_CERTIFICATE -validity $DEFAULT_VALIDITY"
     echo ${cyn}Signing certificate with CA using following command:${end} ${grn}$CMD_RUN${end}
     $CMD_RUN
     echo 
@@ -139,21 +145,9 @@ signCertificate()
     # Import the signed server certificate into keystore #
     ######################################################
     echo ${blu}***** Importing $DEFAULT_SERVER_CERTIFICATE signed server certificate into $DEFAULT_KEYSTORE keystore ... ${end}
-    CMD_RUN="keytool -import -keystore $DEFAULT_TLS_DIR/$DEFAULT_KEYSTORE -file $DEFAULT_TLS_DIR/$DEFAULT_SERVER_CERTIFICATE -alias $DEFAULT_KEYSTORE_ALIAS"
+    CMD_RUN="keytool -importcert -keystore $DEFAULT_TLS_DIR/$DEFAULT_KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -file $DEFAULT_TLS_DIR/$DEFAULT_SERVER_CERTIFICATE "
     echo ${cyn}Importing signed certificate into keystore using following command:${end} ${grn}$CMD_RUN${end}
     $CMD_RUN
-    echo
-
-    echo ${blu}***** [DISABLED] Deleting Server Certificate Signing Request ... ${end}
-    # rm -rf $DEFAULT_TLS_DIR/$DEFAULT_CSR
-    echo
-    
-    echo ${blu}***** [DISABLED] Deleting CA keystore ... ${end}
-    # rm -rf $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE
-    echo
-    
-    echo ${blu}***** [DISABLED] Deleting Server certificate ... ${end}
-    # rm -rf $DEFAULT_TLS_DIR/$DEFAULT_SERVER_CERTIFICATE
     echo
 }
 
@@ -172,12 +166,18 @@ createClientTruststore()
     # Importing a certificate into one's truststore also means trusting all certificates that are signed by that certificate. #
     # This attribute is called the chain of trust.                                                                            #
     ###########################################################################################################################
-    echo ${blu}***** Creating JKS formatted truststore and import $DEFAULT_CACERT CA certificate ... ${end}
+    echo ${blu}***** Importing $DEFAULT_CACERT_PEM Self CA certificate into JKS formatted truststore ... ${end}
     if [ -z $TRUSTSTORE ]; then 
 		inputTruststore
 	fi
-    CMD_RUN="keytool -keystore $DEFAULT_TRUSTSTORE_DIR/$TRUSTSTORE -alias $DEFAULT_CA_ALIAS -import -file $DEFAULT_TLS_DIR/$DEFAULT_CACERT"
-    echo ${cyn}Generating client truststore using following command:${end} ${grn}$CMD_RUN${end}
+    CMD_RUN="keytool -importcert $DEFAULT_TRUSTSTORE_DIR/$TRUSTSTORE -alias $DEFAULT_CA_ALIAS -file $DEFAULT_TLS_DIR/$DEFAULT_CACERT_PEM"
+    echo ${cyn}Importing Self CA certificate into client truststore using following command:${end} ${grn}$CMD_RUN${end}
+    $CMD_RUN
+    echo
+
+    echo ${blu}***** Importing $DEFAULT_KEYSTORE server certificate self signed with $DEFAULT_CACERT_PEM CA certificate into $TRUSTSTORE JKS formatted truststore ... ${end}   
+    CMD_RUN="keytool -importkeystore -srckeystore $DEFAULT_TLS_DIR/$DEFAULT_KEYSTORE -destkeystore $DEFAULT_TRUSTSTORE_DIR/$TRUSTSTORE"
+    echo ${cyn}Importing self signed server certificate into client truststore using following command:${end} ${grn}$CMD_RUN${end}
     $CMD_RUN
     echo
     
@@ -192,18 +192,12 @@ createClientTruststore()
     echo ${cyn}Converting PKCS12 truststore to PEM format using following command:${end} ${grn}$CMD_PEM_RUN${end}
     $CMD_PEM_RUN
     echo
-    
-    echo ${blu}***** Generating $DEFAULT_CACERT_PEM PEM formatted CA Certificate from $DEFAULT_PKCS12_TRUSTSTORE PKCS12 truststore ... ${end}
-    CMD_CA_PEM_RUN="openssl pkcs12 -in $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_PKCS12_TRUSTSTORE -out $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_CACERT_PEM"
-    echo ${cyn}Generating CA PEM formatted certificate using following openssl command:${end} ${grn}$CMD_CA_PEM_RUN${end}
-    $CMD_CA_PEM_RUN
-    echo   
 }
 
 createTLSConfiguration()
 {
-    createTLSKeyAndCsr
     createCA
+    createTLSKeyAndCsr
     signCertificate
     createClientTruststore
 }
