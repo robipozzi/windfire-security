@@ -145,7 +145,7 @@ signCertificate()
     # Import the signed server certificate into keystore #
     ######################################################
     echo ${blu}***** Importing $DEFAULT_SERVER_CERTIFICATE signed server certificate into $DEFAULT_KEYSTORE keystore ... ${end}
-    CMD_RUN="keytool -importcert -keystore $DEFAULT_TLS_DIR/$DEFAULT_KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -file $DEFAULT_TLS_DIR/$DEFAULT_SERVER_CERTIFICATE "
+    CMD_RUN="keytool -importcert -keystore $DEFAULT_TLS_DIR/$DEFAULT_KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -file $DEFAULT_TLS_DIR/$DEFAULT_SERVER_CERTIFICATE"
     echo ${cyn}Importing signed certificate into keystore using following command:${end} ${grn}$CMD_RUN${end}
     $CMD_RUN
     echo
@@ -170,7 +170,7 @@ createClientTruststore()
     if [ -z $TRUSTSTORE ]; then 
 		inputTruststore
 	fi
-    CMD_RUN="keytool -importcert $DEFAULT_TRUSTSTORE_DIR/$TRUSTSTORE -alias $DEFAULT_CA_ALIAS -file $DEFAULT_TLS_DIR/$DEFAULT_CACERT_PEM"
+    CMD_RUN="keytool -importcert -file $DEFAULT_TLS_DIR/$DEFAULT_CACERT_PEM -alias $DEFAULT_CA_ALIAS -keystore $DEFAULT_TRUSTSTORE_DIR/$TRUSTSTORE"
     echo ${cyn}Importing Self CA certificate into client truststore using following command:${end} ${grn}$CMD_RUN${end}
     $CMD_RUN
     echo

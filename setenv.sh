@@ -37,7 +37,7 @@ DEFAULT_CACERT_PEM=ca_keycloak.pem
 DEFAULT_SERVER_CERTIFICATE=keycloak.cer
 
 # Truststore settings
-DEFAULT_TRUSTSTORE_DIR=$HOME/opt/keycloak/ssl
+DEFAULT_TRUSTSTORE_DIR=$HOME/opt/keycloak/ssl/truststore
 DEFAULT_TRUSTSTORE=keycloak.truststore.jks
 DEFAULT_PKCS12_TRUSTSTORE=keycloak.truststore.p12
 DEFAULT_PEM_TRUSTSTORE=keycloak.truststore.pem

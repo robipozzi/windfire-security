@@ -51,9 +51,12 @@ setFunction()
 
 curlNoTLS()
 {
-	echo ${blu}Running curl on HTTP endpoint${end}
+	echo ${blu}Running test on Keycloak HTTP endpoint${end}
 	echo
-	curl -X POST http://$KEYCLOAK_SERVER_ADDRESS:$KEYCLOAK_SERVER_PORT/realms/$REALM_ID/protocol/openid-connect/token \
+	CURL="curl -X POST http://$KEYCLOAK_SERVER_ADDRESS:$KEYCLOAK_SERVER_PORT/realms/$REALM_ID/protocol/openid-connect/token"
+	echo ${blu}Running $CURL ...${end}
+	echo
+	$CURL \
 		-H "Accept: application/json" \
 		-H "Content-Type: application/x-www-form-urlencoded" \
 		-H "cache-control: no-cache" \
@@ -62,10 +65,12 @@ curlNoTLS()
 
 curlSelfSignedTLS()
 {
-	echo ${blu}Running curl on HTTPS endpoint${end}
+	echo ${blu}Running test on Keycloak HTTPS endpoint${end}
 	echo
-	curl -X POST https://$KEYCLOAK_SERVER_ADDRESS:$KEYCLOAK_TLS_SERVER_PORT/realms/$REALM_ID/protocol/openid-connect/token \
-	    --cacert $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_PEM_TRUSTSTORE \
+	CURL="curl -X POST https://$KEYCLOAK_SERVER_ADDRESS:$KEYCLOAK_TLS_SERVER_PORT/realms/$REALM_ID/protocol/openid-connect/token --cacert $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_PEM_TRUSTSTORE"
+	echo ${blu}Running $CURL ...${end}
+	echo
+	$CURL \
 		-H "Accept: application/json" \
 		-H "Content-Type: application/x-www-form-urlencoded" \
 		-H "cache-control: no-cache" \
@@ -74,9 +79,12 @@ curlSelfSignedTLS()
 
 curlSelfSignedTLSwithNoCertverification()
 {
-	echo ${blu}Running curl on HTTPS endpoint, disabling TLS certificate verification${end}
+	echo ${blu}Running test on Keycloak HTTPS endpoint with no certificate verification${end}
 	echo
-	curl -X POST https://$KEYCLOAK_SERVER_ADDRESS:$KEYCLOAK_TLS_SERVER_PORT/realms/$REALM_ID/protocol/openid-connect/token \
+	CURL="curl -X POST https://$KEYCLOAK_SERVER_ADDRESS:$KEYCLOAK_TLS_SERVER_PORT/realms/$REALM_ID/protocol/openid-connect/token"
+	echo ${blu}Running $CURL ...${end}
+	echo
+	$CURL \
 		-H "Accept: application/json" \
 		-H "Content-Type: application/x-www-form-urlencoded" \
 		-H "cache-control: no-cache" \
