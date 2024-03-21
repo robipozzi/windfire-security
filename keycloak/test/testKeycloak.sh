@@ -16,7 +16,7 @@ GRANT_TYPE=
 ##### Function section - START
 main()
 {
-	printChoosePlatform
+	choosePlatform
 	
 	inputRealmId
 	inputRealmUsername
@@ -27,24 +27,19 @@ main()
 	$FUNCTION
 }
 
-printChoosePlatform()
+choosePlatform()
 {
 	echo ${grn}Select Keycloak platform to test: ${end}
     echo "${grn}1. Server on Localhost (No TLS)${end}"
 	echo "${grn}2. Server on Localhost (TLS enabled with self signed certificate)${end}"
 	read PLATFORM_OPTION
-	setFunction
-}
-
-setFunction()
-{
 	case $PLATFORM_OPTION in
 		1)  FUNCTION=curlNoTLS
 			;;
 		2)  FUNCTION=curlSelfSignedTLS
 			;;
 		*) 	printf "\n${red}No valid option selected${end}\n"
-			printChooseFunction
+			choosePlatform
 			;;
 	esac
 }
@@ -114,11 +109,6 @@ inputRealmPassword()
 {
 	echo ${cyn}Input Realm Password : ${end}
 	read -s REALM_PASSWORD
-	setRealmPassword
-}
-
-setRealmPassword()
-{  
 	if [ -z $REALM_PASSWORD ]; then
 		echo ${red}No Realm Password input${end}
 		inputRealmPassword

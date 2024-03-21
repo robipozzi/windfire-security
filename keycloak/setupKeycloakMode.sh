@@ -12,24 +12,19 @@ main()
     $FUNCTION
 }
 
-printChooseFunction()
+chooseFunction()
 {
 	echo ${grn}Choose function : ${end}
     echo "${grn}1. Enable Keycloak TLS${end}"
     echo "${grn}2. Disable Keycloak TLS${end}"
 	read FUNCTION_CHOICE
-	setFunctionChoice
-}
-
-setFunctionChoice()
-{
 	case $FUNCTION_CHOICE in
 		1)  FUNCTION=enableTLS
 			;;
         2)  FUNCTION=disableTLS
             ;;
 		*) 	printf "\n${red}No valid option selected${end}\n"
-			printChooseFunction
+			chooseFunction
 			;;
 	esac
 }
@@ -82,5 +77,5 @@ disableTLS()
 # ##############################################
 # #################### MAIN ####################
 # ##############################################
-printChooseFunction
+chooseFunction
 main

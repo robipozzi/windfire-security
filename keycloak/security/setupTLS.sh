@@ -16,7 +16,7 @@ main()
     $FUNCTION
 }
 
-printChooseFunction()
+chooseFunction()
 {
 	echo ${grn}Choose function : ${end}
     echo "${grn}1. Create our own Certification Authority${end}"
@@ -25,11 +25,6 @@ printChooseFunction()
     echo "${grn}4. Create client truststore${end}"
     echo "${grn}5. Generate all TLS configuration${end}"
     read FUNCTION_CHOICE
-	setFunctionChoice
-}
-
-setFunctionChoice()
-{
 	case $FUNCTION_CHOICE in
 		1)  FUNCTION=createCA
             ;;
@@ -42,7 +37,7 @@ setFunctionChoice()
         5)  FUNCTION=createTLSConfiguration
             ;;
 		*) 	printf "\n${red}No valid option selected${end}\n"
-			printChooseFunction
+			chooseFunction
 			;;
 	esac
 }
@@ -248,5 +243,5 @@ inputTruststore()
 # ##############################################
 # #################### MAIN ####################
 # ##############################################
-printChooseFunction
+chooseFunction
 main
