@@ -1,4 +1,7 @@
 user: pi
 group: pi
 remote_home_dir: /home/pi
-remote_keycloack_dir: "{{ remote_home_dir }}/keycloak"
+remote_keycloak_utils_dir: "{{ remote_home_dir }}/keycloak"
+remote_directory: "/opt/keycloak"
+keycloak_url: "https://github.com/keycloak/keycloak/releases/download/25.0.2/keycloak-25.0.2.zip"
+keycloak_zip: "/tmp/keycloak-25.0.2.zip"

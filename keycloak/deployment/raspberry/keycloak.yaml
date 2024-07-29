@@ -9,22 +9,32 @@
   vars_files:
     - "{{ src_dir }}/conf/raspberry-config.yml"
   tasks:
-    ###############################################
-    ##### Update package manager repositories #####
-    ###############################################
-    - name: Update package manager repositories cache
-      apt:
-        update_cache: yes
-    ######################################
-    ##### Upgrade installed packages #####
-    ######################################
-    - name: Upgrade installed packages
-      apt:
-        upgrade: dist
-    ########################
-    ##### Java Section #####
-    ########################
-    - name: Install OpenJDK
-      apt:
-        name: default-jdk
-        state: present
+    - name: Ensure "{{ remote_directory }}" remote directory exists
+      file:
+        path: "{{ remote_directory }}"
+        state: directory
+    - name: Download Keycloak zip file
+      get_url:
+        url: "{{ keycloak_url }}"
+        dest: "{{ keycloak_zip }}"
+    - name: Unzip Keycloak to the remote directory
+      unarchive:
+        src: "{{ keycloak_zip }}"
+        dest: "{{ remote_directory }}"
+        remote_src: yes
+        creates: "{{ remote_directory }}/keycloak-25.0.2"  # Ensures idempotency
+    - name: Remove the downloaded zip file
+      file:
+        path: "{{ keycloak_zip }}"
+        state: absent
+    - name: Ensure "{{ remote_keycloak_utils_dir }}" remote directory exists
+      file:
+        path: "{{ remote_keycloak_utils_dir }}"
+        state: directory
+    - name: Copy Keycloak utility scripts "{{ remote_keycloak_utils_dir }}r" folder on remote server
+      copy:
+        src: "./keycloak_scripts"
+        dest: "{{ remote_keycloak_utils_dir }}"
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: "{{ mode }}"

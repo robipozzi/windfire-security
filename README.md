@@ -5,6 +5,7 @@
 - [Identity and access management](#identity-and-access-management)
     - [Keycloak](#Keycloak)
         - [Run Keycloak as server on localhost](#run-keycloak-as-server-on-localhost)
+        - [Install and run Keycloak as server on a Raspberry Pi box](#install-and-run-keycloak-as-server-on-a-raspberry-pi-box)
         - [Secure and run Keycloak server with TLS self signed certificate](#secure-and-run-keycloak-server-with-tls-self-signed-certificate)
         - [Run Keycloak on Docker](#run-keycloak-on-docker)
         - [Test Keycloak functioning](#test-keycloak-functioning)
@@ -48,9 +49,10 @@ Keycloak provides user federation, strong authentication, user management, fine-
 
 ![](img/Keycloak_NoTLS.png)
 
-As we all modern technologies, Keycloak can be deployed in different way, the easiest way for my purposes is to use the Docker.
+As we all modern technologies, Keycloak can be deployed in different ways:
 
-A comprehensive guide on how to run Keycloak in Docker is available on Keycloak official website https://www.keycloak.org/getting-started/getting-started-docker.
+- A comprehensive guide on how to download, install and run Keycloak with OpenJDK is available here https://www.keycloak.org/getting-started/getting-started-zip
+- A comprehensive guide on how to run Keycloak in Docker is available on Keycloak official website https://www.keycloak.org/getting-started/getting-started-docker.
 
 A convenient script **[start-keycloak.sh](keycloak/start-keycloak.sh)** is provided to run Keycloak in one of the following mode
 
@@ -60,6 +62,9 @@ A convenient script **[start-keycloak.sh](keycloak/start-keycloak.sh)** is provi
 In case *option 1* is selected, the script just runs the **<KEYCLOAK_HOME>/bin/kc.sh** command provided by Keycloak; **KEYCLOAK_HOME** needs to be set in **[setenv.sh](setenv.sh)** to point to actual Keycloak installation directory on your platform.
 
 Keycloak Admin console will respond on http://localhost:8080/admin. The first time you launch it, you will need to create an admin user that will secure all the following accesses, follow the instructions at *https://www.keycloak.org/getting-started/getting-started-zip* to create admin credentials.
+
+#### Install and run Keycloak as server on a Raspberry Pi box
+[TODO]
 
 #### Secure and run Keycloak server with TLS self signed certificate
 Keycloak can be configured to run with TLS enabled, loading the required certificate infrastructure using files in PEM format or from a Java Keystore. When both alternatives are configured, the PEM files takes precedence over the Java Keystores.
