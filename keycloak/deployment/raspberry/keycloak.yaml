@@ -1,0 +1,30 @@
+--- # Ansible Playbook to configure a set of Raspberry PIs in a consistent and repeatable way
+# Software installation and configuration for Raspberry PI box
+- hosts: raspberry_identitymanager
+  remote_user: "{{ user }}"
+  become: yes
+  vars:
+    src_dir: "{{ playbook_dir }}"
+    mode: u=rwx
+  vars_files:
+    - "{{ src_dir }}/conf/raspberry-config.yml"
+  tasks:
+    ###############################################
+    ##### Update package manager repositories #####
+    ###############################################
+    - name: Update package manager repositories cache
+      apt:
+        update_cache: yes
+    ######################################
+    ##### Upgrade installed packages #####
+    ######################################
+    - name: Upgrade installed packages
+      apt:
+        upgrade: dist
+    ########################
+    ##### Java Section #####
+    ########################
+    - name: Install OpenJDK
+      apt:
+        name: default-jdk
+        state: present
