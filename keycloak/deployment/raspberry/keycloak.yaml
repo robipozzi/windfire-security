@@ -31,7 +31,7 @@
       file:
         path: "{{ remote_keycloak_utils_dir }}"
         state: directory
-    - name: Copy Keycloak utility scripts "{{ remote_keycloak_utils_dir }}r" folder on remote server
+    - name: Copy Keycloak utility scripts "{{ remote_keycloak_utils_dir }}" folder on remote server
       copy:
         src: "./keycloak_scripts"
         dest: "{{ remote_keycloak_utils_dir }}"
