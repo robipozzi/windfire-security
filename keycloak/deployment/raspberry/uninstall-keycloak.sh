@@ -1,0 +1,1 @@
+ansible-playbook keycloak-uninstall.yaml

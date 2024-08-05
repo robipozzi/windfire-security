@@ -1,0 +1,19 @@
+--- # Ansible Playbook to configure a set of Raspberry PIs in a consistent and repeatable way
+# Software installation and configuration for Raspberry PI box
+- hosts: raspberry_identitymanager
+  remote_user: "{{ user }}"
+  become: yes
+  vars:
+    src_dir: "{{ playbook_dir }}"
+    mode: u=rwx
+  vars_files:
+    - "{{ src_dir }}/conf/raspberry-config.yml"
+  tasks:
+    - name: Remove "{{ remote_directory }}" remote directory
+      file:
+        path: "{{ remote_directory }}"
+        state: absent
+    - name: Remove "{{ remote_keycloak_utils_dir }}" remote directory
+      file:
+        path: "{{ remote_keycloak_utils_dir }}"
+        state: absent

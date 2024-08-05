@@ -2,8 +2,9 @@ source ./setenv.sh
 # ##### Variable section - START
 SCRIPT=start-keycloak.sh
 PLATFORM_OPTION=
-KEYSTORE_PASSWORD=
+KEYCLOAK_USERNAME=
 KEYCLOAK_PASSWORD=
+KEYSTORE_PASSWORD=
 DEFAULT_LOG_LEVEL=info
 LOG_LEVEL=
 # ##### Variable section - END
@@ -20,22 +21,24 @@ main()
 selectPlatform()
 {
 	echo ${grn}Select Keycloak run platform : ${end}
-    echo "${grn}1. Server on Localhost (No TLS)${end}"
-	echo "${grn}2. Server on Localhost (TLS enabled)${end}"
-	echo "${grn}3. Docker${end}"
+    echo "${grn}1. Run server (No TLS)${end}"
+	echo "${grn}2. Run server (TLS enabled)${end}"
+	echo "${grn}3. Run Docker${end}"
 	read PLATFORM_OPTION
 	
 	case $PLATFORM_OPTION in
 		1)  selectLogLevel
-			sudo $KEYCLOAK_HOME/bin/kc.sh start-dev --log-level=$LOG_LEVEL
+			sudo $KEYCLOAK_HOME/bin/kc.sh start-dev --log-level=$LOG_LEVEL > keycloak.log 2>&1 &
 			;;
 		2)  selectLogLevel
 			if [ -z $KEYSTORE_PASSWORD ]; then 
 				inputKeystorePassword
 			fi
-			sudo $KEYCLOAK_HOME/bin/kc.sh start --http-enabled=false --https-key-store-password=$KEYSTORE_PASSWORD --hostname=localhost --log-level=$LOG_LEVEL
+			sudo $KEYCLOAK_HOME/bin/kc.sh start --http-enabled=false --https-key-store-password=$KEYSTORE_PASSWORD --hostname=localhost --log-level=$LOG_LEVEL > keycloak.log 2>&1 &
 			;;
-        3)  selectLogLevel
+        3)  inputKeycloakUsername
+			inputKeycloakPassword
+			selectLogLevel
 			if [ -z $KEYCLOAK_PASSWORD ]; then 
 				inputKeycloakPassword
 			fi
@@ -71,13 +74,13 @@ selectLogLevel()
 	esac
 }
 
-inputKeystorePassword()
+inputKeycloakUsername()
 {
-	echo ${grn}Input Keystore Password : ${end}
-	read -s KEYSTORE_PASSWORD
-	if [ -z $KEYSTORE_PASSWORD ]; then
-		echo ${red}No Keystore Password input${end}
-		inputKeystorePassword
+	echo ${grn}Input Keycloak Username : ${end}
+	read KEYCLOAK_USERNAME
+	if [ -z $KEYCLOAK_USERNAME ]; then
+		echo ${red}No Keycloak Username input${end}
+		inputKeycloakUsername
 	fi
 }
 
@@ -88,6 +91,16 @@ inputKeycloakPassword()
 	if [ -z $KEYCLOAK_PASSWORD ]; then
 		echo ${red}No Keycloak Password input${end}
 		inputKeycloakPassword
+	fi
+}
+
+inputKeystorePassword()
+{
+	echo ${grn}Input Keystore Password : ${end}
+	read -s KEYSTORE_PASSWORD
+	if [ -z $KEYSTORE_PASSWORD ]; then
+		echo ${red}No Keystore Password input${end}
+		inputKeystorePassword
 	fi
 }
 # ***** Function section - END
