@@ -27,12 +27,24 @@ selectPlatform()
 	read PLATFORM_OPTION
 	
 	case $PLATFORM_OPTION in
-		1)  selectLogLevel
-			sudo $KEYCLOAK_HOME/bin/kc.sh start-dev --log-level=$LOG_LEVEL > keycloak.log 2>&1 &
+		1) 	selectLogLevel
+			echo ${blu}"Keycloak will start with $LOG_LEVEL log level..."${end}
+			# Check if the admin user has already been created
+			if [ ! -f "$KEYCLOAK_HOME/data/.admin_created" ]; then
+				setupAdminAndStart "NOSSL"
+			else
+				# Start Keycloak in development mode with the specified log level
+				sudo $KEYCLOAK_HOME/bin/kc.sh start-dev --log-level=$LOG_LEVEL > keycloak.log 2>&1 &
+			fi
 			;;
 		2)  selectLogLevel
+			echo ${blu}"Keycloak will start with $LOG_LEVEL log level..."${end}
 			if [ -z $KEYSTORE_PASSWORD ]; then 
 				inputKeystorePassword
+			fi
+			# Check if the admin user has already been created
+			if [ ! -f "$KEYCLOAK_HOME/data/.admin_created" ]; then
+				setupAdminAndStart "SSL"
 			fi
 			sudo $KEYCLOAK_HOME/bin/kc.sh start --http-enabled=false --https-key-store-password=$KEYSTORE_PASSWORD --hostname=localhost --log-level=$LOG_LEVEL > keycloak.log 2>&1 &
 			;;
@@ -71,6 +83,32 @@ selectLogLevel()
 		*) 	printf "\n${red}No valid option selected${end}\n"
 			selectLogLevel
 			;;
+	esac
+}
+
+setupAdminAndStart()
+{
+    echo ${blu}*************************************${end}
+    echo ${blu}***** Setup Keycloak Admin user *****${end}
+    echo ${blu}*************************************${end}
+    echo
+    inputKeycloakUsername
+	inputKeycloakPassword
+	export KEYCLOAK_ADMIN_USER=$KEYCLOAK_USERNAME
+	export KEYCLOAK_ADMIN_PASSWORD=$KEYCLOAK_PASSWORD
+
+	echo ${blu}"Starting Keycloak with $KEYCLOAK_USERNAME as administration user..."${end}
+	case $1 in
+		NOSSL) 	echo ${blu}"Starting Keycloak with NO SSL enabled, console accessible on http ..."${end}
+				sudo KEYCLOAK_ADMIN=$KEYCLOAK_USERNAME KEYCLOAK_ADMIN_PASSWORD=$KEYCLOAK_PASSWORD $KEYCLOAK_HOME/bin/kc.sh start-dev --log-level=$LOG_LEVEL > keycloak.log 2>&1 &
+				sudo touch "$KEYCLOAK_HOME/data/.admin_created"
+				;;
+		SSL)	echo ${blu}"Starting Keycloak with SSL enabled, console accessible on https ..."${end}
+				sudo KEYCLOAK_ADMIN=$KEYCLOAK_USERNAME KEYCLOAK_ADMIN_PASSWORD=$KEYCLOAK_PASSWORD $KEYCLOAK_HOME/bin/kc.sh start --http-enabled=false --https-key-store-password=$KEYSTORE_PASSWORD --hostname=localhost --log-level=$LOG_LEVEL > keycloak.log 2>&1 &
+				sudo touch "$KEYCLOAK_HOME/data/.admin_created"
+				;;
+		*)		echo ${red}"Invalid option. Please use 'NOSSL', or 'SSL'."${end}
+            	;;
 	esac
 }
 

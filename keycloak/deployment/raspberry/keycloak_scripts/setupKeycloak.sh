@@ -15,54 +15,18 @@ main()
 chooseFunction()
 {
 	echo ${grn}Choose function : ${end}
-    echo "${grn}1. Setup Admin user${end}"
-    echo "${grn}2. Enable Keycloak TLS${end}"
-    echo "${grn}3. Disable Keycloak TLS${end}"
+    echo "${grn}1. Enable Keycloak TLS${end}"
+    echo "${grn}2. Disable Keycloak TLS${end}"
 	read FUNCTION_CHOICE
 	case $FUNCTION_CHOICE in
-        1)  FUNCTION=setupAdmin
+		1)  FUNCTION=enableTLS
 			;;
-		2)  FUNCTION=enableTLS
-			;;
-        3)  FUNCTION=disableTLS
+        2)  FUNCTION=disableTLS
             ;;
 		*) 	printf "\n${red}No valid option selected${end}\n"
 			chooseFunction
 			;;
 	esac
-}
-
-setupAdmin()
-{
-    echo ${blu}*************************************${end}
-    echo ${blu}***** Setup Keycloak Admin user *****${end}
-    echo ${blu}*************************************${end}
-    echo
-    inputKeycloakUsername
-	inputKeycloakPassword
-	export KEYCLOAK_ADMIN=$KEYCLOAK_USERNAME
-	export KEYCLOAK_ADMIN_PASSWORD=$KEYCLOAK_PASSWORD
-    sudo KEYCLOAK_ADMIN=$KEYCLOAK_USERNAME KEYCLOAK_ADMIN_PASSWORD=$KEYCLOAK_PASSWORD $KEYCLOAK_HOME/bin/kc.sh start-dev --log-level=$LOG_LEVEL > keycloak.log 2>&1 &
-}
-
-inputKeycloakUsername()
-{
-	echo ${grn}Input Keycloak Username : ${end}
-	read KEYCLOAK_USERNAME
-	if [ -z $KEYCLOAK_USERNAME ]; then
-		echo ${red}No Keycloak Username input${end}
-		inputKeycloakUsername
-	fi
-}
-
-inputKeycloakPassword()
-{
-	echo ${grn}Input Keycloak Password : ${end}
-	read -s KEYCLOAK_PASSWORD
-	if [ -z $KEYCLOAK_PASSWORD ]; then
-		echo ${red}No Keycloak Password input${end}
-		inputKeycloakPassword
-	fi
 }
 
 enableTLS()
