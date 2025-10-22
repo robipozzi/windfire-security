@@ -23,11 +23,6 @@ class KeycloakConfig:
         self,
         server_url: str = None,
         service: str = None,
-        realm: str = None,
-        client_id: str = None,
-        client_secret: str = None,
-        username: str = None,
-        password: str = None
     ):    
         self.server_url = server_url or os.getenv('KEYCLOAK_URL')
         self.service = service
