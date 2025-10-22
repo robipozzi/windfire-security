@@ -1,0 +1,8 @@
+{
+  "services": {
+    "windfire-calendar-srv": {
+      "realm": "windfire",
+      "client_id": "windfire-calendar"
+    }
+  }
+}

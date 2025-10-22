@@ -7,3 +7,8 @@ keycloak/security/tls/keycloak.cer
 keycloak/security/tls/keycloak.crt
 keycloak/security/tls/keycloak.csr
 keycloak/security/tls/server.keystore
+app/windfire-security/
+app/*/__pycache__/
+app/__pycache__/
+app/app_rotating.log
+app/.env

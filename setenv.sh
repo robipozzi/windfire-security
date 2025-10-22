@@ -11,6 +11,18 @@ coffee3="${coffee} ${coffee} ${coffee}"
 ##### Terminal Colors - END
 
 ###### Variable section - START
+PYTORCH_VIRTUAL_ENV=windfire-security
+ENVIRONMENT=
+AUTH_SERVICE_TEST=windfire-calendar-srv
+# **** START - Remove before committing to repository ****
+USERNAME=windfire
+PASSWORD=Pl@t0@Ath3ns
+# **** END - Remove before committing to repository ****
+KEYCLOAK_URL="http://raspberry01:8080"
+#KEYCLOAK_REALM="windfire"
+#KEYCLOAK_CLIENT_ID="windfire-calendar"
+#KEYCLOAK_CLIENT_SECRET=
+
 ## Keycloak settings
 KEYCLOAK_HOME=/Users/robertopozzi/software/keycloak-23.0.3
 KEYCLOAK_DOCKER_IMAGE=quay.io/keycloak/keycloak
@@ -42,3 +54,30 @@ DEFAULT_TRUSTSTORE=keycloak.truststore.jks
 DEFAULT_PKCS12_TRUSTSTORE=keycloak.truststore.p12
 DEFAULT_PEM_TRUSTSTORE=keycloak.truststore.pem
 ###### Variable section - END
+
+###### Function section - START
+printSelectEnvironment()
+{
+	echo ${grn}Select environment : ${end}
+    echo "${grn}1. Development${end}"
+	echo "${grn}2. Test${end}"
+    echo "${grn}3. Production${end}"
+	read ENVIRONMENT_SELECTION
+	setEnvironment
+}
+
+setEnvironment()
+{
+	case $ENVIRONMENT_SELECTION in
+		1)  ENVIRONMENT=dev
+			;;
+		2)  ENVIRONMENT=test
+			;;
+        3)  ENVIRONMENT=prod
+            ;;
+		*) 	printf "\n${red}No valid option selected${end}\n"
+			printSelectEnvironment
+			;;
+	esac
+}
+###### Function section - END
