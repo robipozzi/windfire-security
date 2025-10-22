@@ -11,17 +11,13 @@ coffee3="${coffee} ${coffee} ${coffee}"
 ##### Terminal Colors - END
 
 ###### Variable section - START
-PYTORCH_VIRTUAL_ENV=windfire-security
+PYTORCH_SERVER_VIRTUAL_ENV=windfire-security-server
+PYTORCH_CLIENT_VIRTUAL_ENV=windfire-security-client
+PYTORCH_TEST_VIRTUAL_ENV=windfire-security-test
 ENVIRONMENT=
-AUTH_SERVICE_TEST=windfire-calendar-srv
-# **** START - Remove before committing to repository ****
-USERNAME=windfire
-PASSWORD=Pl@t0@Ath3ns
-# **** END - Remove before committing to repository ****
+DEFAULT_AUTH_SERVICE_TEST=windfire-calendar-srv
+DEFAULT_USERNAME=windfire
 KEYCLOAK_URL="http://raspberry01:8080"
-#KEYCLOAK_REALM="windfire"
-#KEYCLOAK_CLIENT_ID="windfire-calendar"
-#KEYCLOAK_CLIENT_SECRET=
 
 ## Keycloak settings
 KEYCLOAK_HOME=/Users/robertopozzi/software/keycloak-23.0.3
@@ -79,5 +75,33 @@ setEnvironment()
 			printSelectEnvironment
 			;;
 	esac
+}
+
+getCredentials() {
+    while true; do
+        read -r -p "Enter username [${DEFAULT_USERNAME}]: " INPUT_USER
+        if [[ -z "$INPUT_USER" ]]; then
+            USERNAME="$DEFAULT_USERNAME"
+        else
+            USERNAME="$INPUT_USER"
+        fi
+
+        read -s -r -p "Enter password: " PASSWORD
+        echo
+        if [[ -z "$PASSWORD" ]]; then
+            echo "Error: Password cannot be empty."
+            continue
+        fi
+
+        read -r -p "Enter service [${DEFAULT_AUTH_SERVICE_TEST}]: " INPUT_SERVICE
+        if [[ -z "$INPUT_SERVICE" ]]; then
+            AUTH_SERVICE_TEST="$DEFAULT_AUTH_SERVICE_TEST"
+        else
+            AUTH_SERVICE_TEST="$INPUT_SERVICE"
+        fi
+
+        export USERNAME PASSWORD AUTH_SERVICE_TEST
+        break
+    done
 }
 ###### Function section - END

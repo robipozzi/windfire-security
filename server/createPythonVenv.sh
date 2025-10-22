@@ -4,7 +4,7 @@ source ../setenv.sh
 run()
 {
     echo ${grn}Creating Python3 Virtual Environment ...${end}
-    python3 -m venv $PYTORCH_VIRTUAL_ENV
+    python3 -m venv $PYTORCH_SERVER_VIRTUAL_ENV
     echo ${grn}Python3 Virtual Environment created${end}
 }
 

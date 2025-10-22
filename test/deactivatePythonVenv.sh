@@ -4,12 +4,12 @@ source ../setenv.sh
 main()
 {
     # Check if the directory exists
-    echo Check if Python virtual environment ${blu}$PYTORCH_VIRTUAL_ENV${end} exists
-    if [ -d "$PYTORCH_VIRTUAL_ENV" ]; then
-        echo "Python virtual environment ${blu}$PYTORCH_VIRTUAL_ENV${end} exists, deactivating ..."
+    echo Check if Python virtual environment ${blu}$PYTORCH_TEST_VIRTUAL_ENV${end} exists
+    if [ -d "$PYTORCH_TEST_VIRTUAL_ENV" ]; then
+        echo "Python virtual environment ${blu}$PYTORCH_TEST_VIRTUAL_ENV${end} exists, deactivating ..."
         deactivate
     else
-        echo "Python virtual environment ${blu}$PYTORCH_VIRTUAL_ENV${end} does not exist"
+        echo "Python virtual environment ${blu}$PYTORCH_TEST_VIRTUAL_ENV${end} does not exist"
     fi
 }
 
