@@ -7,6 +7,7 @@ import os
 import httpx
 
 colorama_init = init(autoreset=True)
+authUrl = os.getenv("AUTH_URL", "http://localhost:8000")
 
 # Application startup is managed by the lifespan context manager defined below.
 SERVICE_NAME = "Windfire Security Test Server"
@@ -50,14 +51,28 @@ async def test_endpoint(
             detail="Missing or invalid authentication scheme",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+    # Read JSON payload from the request
+    payload = None
+    try:
+        payload = await request.json()
+        print(f"Received JSON payload: {payload}")
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid JSON payload: {e}")
 
-    token = credentials.credentials
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="JSON payload must be an object")
 
     # Verify token by calling the external verification endpoint
-    verify_url = "http://localhost:8000/verify"
     try:
+        url = authUrl + "/verify"
+        token = credentials.credentials
+        http_headers = {"Content-Type": "application/json",
+                        "Authorization": f"Bearer {token}"}
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(verify_url, headers={"Authorization": f"Bearer {token}"})
+            resp = await client.post(url, 
+                                     json=payload, 
+                                     headers=http_headers)
     except httpx.RequestError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -72,16 +87,7 @@ async def test_endpoint(
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
-    try:
-        payload = await request.json()
-        print(f"Received JSON payload: {payload}")
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid JSON payload: {e}")
-
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="JSON payload must be an object")
-
+    print(f"Token verified successfully with response: {resp.json()}")
     return {"message": "Test endpoint reached successfully"}
 
 # Health check endpoint

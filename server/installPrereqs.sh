@@ -9,7 +9,8 @@ installPythonModules()
                 uvicorn[standard]==0.24.0 \
                 pydantic==2.5.0 \
                 PyJWT==2.8.0 \
-                requests==2.32.5
+                requests==2.32.5 \
+                cryptography>=41.0.0
 }
 
 # ***** MAIN EXECUTION

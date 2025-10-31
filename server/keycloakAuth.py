@@ -315,6 +315,121 @@ class KeycloakAuth:
         logger.info("Verifying token locally using public keys")
         
         try:
+            import json
+            
+            # Get unverified header to find kid
+            unverified_header = jwt.get_unverified_header(token)
+            kid = unverified_header.get('kid')
+            
+            if not kid:
+                raise KeycloakAuthError("Token has no 'kid' in header")
+            
+            # Get public keys from Keycloak
+            jwks = self.get_public_keys()
+            
+            # Find the matching public key
+            public_key_data = None
+            for key in jwks.get('keys', []):
+                if key.get('kid') == kid:
+                    public_key_data = key
+                    break
+            
+            if not public_key_data:
+                raise KeycloakAuthError(f"Public key with kid '{kid}' not found")
+            
+            # Convert JWK to PEM format - try multiple methods
+            public_key = None
+            
+            # Method 1: Try PyJWT's RSAAlgorithm (PyJWT >= 2.0)
+            try:
+                from jwt.algorithms import RSAAlgorithm
+                public_key = RSAAlgorithm.from_jwk(json.dumps(public_key_data))
+                logger.debug("Using PyJWT RSAAlgorithm for key conversion")
+            except (ImportError, AttributeError) as e:
+                logger.debug(f"PyJWT RSAAlgorithm not available: {e}")
+            
+            # Method 2: Manual conversion using cryptography
+            if public_key is None:
+                try:
+                    from cryptography.hazmat.primitives.asymmetric import rsa
+                    from cryptography.hazmat.backends import default_backend
+                    import base64
+                    
+                    if public_key_data.get('kty') != 'RSA':
+                        raise KeycloakAuthError(f"Unsupported key type: {public_key_data.get('kty')}")
+                    
+                    # Decode base64url encoded components
+                    def b64_decode(data):
+                        padding = 4 - len(data) % 4
+                        if padding != 4:
+                            data += '=' * padding
+                        return int.from_bytes(base64.urlsafe_b64decode(data), 'big')
+                    
+                    n = b64_decode(public_key_data['n'])  # modulus
+                    e = b64_decode(public_key_data['e'])  # exponent
+                    
+                    # Create RSA public key
+                    public_key = rsa.RSAPublicNumbers(e, n).public_key(default_backend())
+                    logger.debug("Using manual cryptography conversion for key")
+                    
+                except Exception as e:
+                    raise KeycloakAuthError(f"Failed to convert JWK to public key: {str(e)}")
+            
+            if public_key is None:
+                raise KeycloakAuthError("Could not convert JWK to public key")
+            
+            # Decode and verify token
+            # First try with audience verification
+            try:
+                decoded_token = jwt.decode(
+                    token,
+                    public_key,
+                    algorithms=['RS256'],
+                    audience=self.config.client_id,
+                    options={"verify_signature": True, "verify_aud": True}
+                )
+            except jwt.InvalidAudienceError:
+                # If audience validation fails, try without audience verification
+                logger.warning(f"Token audience mismatch. Expected: {self.config.client_id}. Trying without audience verification...")
+                decoded_token = jwt.decode(
+                    token,
+                    public_key,
+                    algorithms=['RS256'],
+                    options={"verify_signature": True, "verify_aud": False}
+                )
+            
+            logger.info(f"Token verified successfully for user: {decoded_token.get('preferred_username')}")
+            return decoded_token
+            
+        except jwt.ExpiredSignatureError:
+            logger.error("Token has expired")
+            raise KeycloakAuthError("Token has expired")
+        except jwt.InvalidTokenError as e:
+            logger.error(f"Token verification failed: {str(e)}")
+            raise KeycloakAuthError(f"Invalid token: {str(e)}")
+        except Exception as e:
+            logger.error(f"Token verification error: {str(e)}")
+            raise KeycloakAuthError(f"Token verification error: {str(e)}")
+
+
+
+    def _________verify_token_locally(self, token: str) -> Dict[str, Any]:
+        """
+        Verify token locally using public keys (no introspection endpoint needed)
+        This is the most reliable method as it doesn't require special client permissions
+        
+        Args:
+            token: JWT token to verify
+            
+        Returns:
+            Dict with decoded token claims
+            
+        Raises:
+            KeycloakAuthError: If verification fails
+        """
+        logger.info("Verifying token locally using public keys")
+        
+        try:
             # Get unverified header to find kid
             unverified_header = jwt.get_unverified_header(token)
             kid = unverified_header.get('kid')

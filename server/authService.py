@@ -52,6 +52,9 @@ class KeycloakTokenResponse(BaseModel):
     refresh_expires_in: Optional[int] = None
     scope: Optional[str] = None
 
+class KeycloakService(BaseModel):
+    service: str
+
 # ###############################################################
 # ########## START - Keycloak Authentication endpoints ##########
 # ###############################################################
@@ -66,6 +69,7 @@ async def keycloak_login(login_request: KeycloakLoginRequest):
     Returns:
         Access token and refresh token
     """
+    logger.debug(f"====> /auth endpoint called for service: {login_request.service} <====")
     logger.info(f"Keycloak login attempt for user {login_request.username} for service {login_request.service}")
     try:
         # Authenticate with Keycloak
@@ -99,11 +103,13 @@ async def keycloak_login(login_request: KeycloakLoginRequest):
             detail="Authentication error"
         )
 
-async def verify_token(service: str, credentials: HTTPAuthorizationCredentials = Depends(security)):
+@app.post("/verify")
+async def verify(tokenValidate: KeycloakService, credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
+        service = tokenValidate.service
+        logger.debug(f"====> /verify endpoint called for service: {tokenValidate.service} <====")
         token_claims = verify_token(credentials.credentials, service=service, method='local')
-        #token_claims = auth.verify_token_locally(credentials.credentials)
-        return token_claims
+        return {"status": "valid"}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
 # ###############################################################
