@@ -1,13 +1,14 @@
-from fastapi import FastAPI, HTTPException, Depends, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import uvicorn
-from colorama import Fore, Style, init
-from contextlib import asynccontextmanager
 import os
 import httpx
+from fastapi import FastAPI, HTTPException, Depends, status, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from colorama import Fore, Style, init
+from contextlib import asynccontextmanager
 
 colorama_init = init(autoreset=True)
-authUrl = os.getenv("AUTH_URL", "http://localhost:8000")
+verify_ssl = os.getenv("VERIFY_SSL_CERTS").lower() == "true"
+authUrl = os.getenv("AUTH_URL", "https://localhost:8443")
 
 # Application startup is managed by the lifespan context manager defined below.
 SERVICE_NAME = "Windfire Security Test Server"
@@ -40,7 +41,7 @@ async def test_endpoint(
 ):
     """
     A test endpoint to verify server is running and a valid bearer token is provided.
-    Token is validated by calling the /verify endpoint on http://localhost:8000
+    Token is validated by calling the /verify endpoint on https://localhost:8443
     """
     print(f"====> /test endpoint called <====")
 
@@ -69,7 +70,7 @@ async def test_endpoint(
         token = credentials.credentials
         http_headers = {"Content-Type": "application/json",
                         "Authorization": f"Bearer {token}"}
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=5.0, verify=verify_ssl) as client:
             resp = await client.post(url, 
                                      json=payload, 
                                      headers=http_headers)

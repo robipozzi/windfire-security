@@ -15,3 +15,5 @@ server/.env
 test/windfire-security-test/
 test/*/__pycache__/
 test/__pycache__/
+server/tls/windfire-security-cert.pem
+server/tls/windfire-security-key.pem

@@ -15,9 +15,9 @@ PYTORCH_SERVER_VIRTUAL_ENV=windfire-security-server
 PYTORCH_CLIENT_VIRTUAL_ENV=windfire-security-client
 PYTORCH_TEST_VIRTUAL_ENV=windfire-security-test
 ENVIRONMENT=
-DEFAULT_AUTH_SERVICE_TEST=windfire-calendar-srv
 DEFAULT_USERNAME=windfire
-KEYCLOAK_URL="http://raspberry01:8080"
+DEFAULT_AUTH_SERVICE_TEST=windfire-calendar-srv
+VERIFY_SSL_CERTS=false
 
 ## Keycloak settings
 KEYCLOAK_HOME=/Users/robertopozzi/software/keycloak-23.0.3

@@ -2,11 +2,11 @@ import json
 import os
 from typing import Dict, Any
 from dataclasses import dataclass
-from log import loggingFactory
 from dotenv import load_dotenv
 
 # Initialize logger at the top so it's available everywhere
-logger = loggingFactory.get_logger('config-reader')
+from log.loggingFactory import logger_factory
+logger = logger_factory.get_logger('config-reader')
 
 # Load environment from .env file
 load_dotenv()
@@ -61,7 +61,11 @@ class ConfigReader:
             
             # Validate and parse configuration
             self._parse_config(config_data)
-            logger.info(f"Configuration loaded successfully. Services: {list(self.config.keys())}")
+            logger.info(f"Configuration loaded successfully.")
+            logger.info(f"  Services: {list(self.config.keys())}")
+            logger.info(f"  KEYCLOAK_SERVER_URL: {os.getenv('KEYCLOAK_SERVER_URL')}")
+            logger.info(f"  ENFORCE_HTTPS: {os.getenv('ENFORCE_HTTPS')}")
+            logger.info(f"  ALLOWED_HOSTS: {os.getenv('ALLOWED_HOSTS')}")
             
         except json.JSONDecodeError as e:
             raise ConfigError(f"Invalid JSON in configuration file: {str(e)}")
@@ -189,6 +193,28 @@ class ConfigReader:
         """
         return list(self.config.keys())
     
+    def get(self, key: str) -> Any:
+        """
+        Get an environment variable value by key.
+        
+        Args:
+            key: Environment variable name
+            
+        Returns:
+            The value of the environment variable or None if not set
+        """
+        if key in 'ENFORCE_HTTPS':
+            value = None
+            raw = os.getenv(key)
+            if isinstance(raw, str):
+                normalized = raw.strip().lower()
+                value = normalized in ('true', '1', 'yes', 'on')
+            else:
+                value = bool(raw)
+            return value
+
+        return os.getenv(key)
+    
     def reload_config(self):
         """
         Reload configuration from file
@@ -219,6 +245,11 @@ def load_config(config_file: str = 'config.json') -> ConfigReader:
         ConfigError: If configuration is invalid
     """
     return ConfigReader(config_file)
+
+####################################################
+##### Initialize configuration reader instance #####
+####################################################
+config = ConfigReader()
 
 # Example usage
 if __name__ == "__main__":

@@ -1,17 +1,16 @@
 import requests
-from typing import Dict, Any
-from datetime import datetime, timedelta
 import os
-from log import loggingFactory
-from config.config_reader import ConfigReader
 import jwt
 import json
+from typing import Dict, Any
+from datetime import datetime, timedelta
 
 # Initialize logger at the top so it's available everywhere
-logger = loggingFactory.get_logger('keycloak-auth')
+from log.loggingFactory import logger_factory
+logger = logger_factory.get_logger('keycloak-auth')
 
-# Load configuration 
-config_reader = ConfigReader()
+# Load configuration
+from config.config_reader import config
 
 class KeycloakAuthError(Exception):
     """Custom exception for Keycloak authentication errors"""
@@ -24,11 +23,11 @@ class KeycloakConfig:
         server_url: str = None,
         service: str = None,
     ):    
-        self.server_url = server_url or os.getenv('KEYCLOAK_URL')
+        self.server_url = server_url or os.getenv('KEYCLOAK_SERVER_URL')
         self.service = service
         servicecfg = None
         if not self.service is None:
-            servicecfg = config_reader.get_service(self.service)
+            servicecfg = config.get_service(self.service)
             logger.debug(f"KeycloakConfig: got service config for {self.service}: {servicecfg}")
             self.realm = servicecfg.realm
             self.client_id = servicecfg.client_id

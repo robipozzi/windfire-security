@@ -7,6 +7,7 @@ run()
     USERNAME=$USERNAME \
     PASSWORD=$PASSWORD \
     SERVICE=$AUTH_SERVICE_TEST \
+    VERIFY_SSL_CERTS=$VERIFY_SSL_CERTS \
     python3 testServer.py
 }
 
