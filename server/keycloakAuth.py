@@ -621,20 +621,3 @@ def verify_token(token: str, service: str, method: str = 'local') -> Dict[str, A
         return auth.verify_token_locally(token)
     else:
         return auth.introspect_token(token)
-    
-# The verify_token convenience function has been commented out per request.
-# def verify_token(token: str, config: KeycloakConfig = None, method: str = 'local') -> Dict[str, Any]:
-#     """
-#     Quick function to verify a token
-#     
-#     Args:
-#         token: Token to verify
-#         config: Keycloak configuration
-#         method: 'local' (default, no special permissions needed) or 'introspect' (requires permissions)
-#     """
-#     auth = KeycloakAuth(config)
-#     
-#     if method == 'local':
-#         return auth.verify_token_locally(token)
-#     else:
-#         return auth.introspect_token(token)
