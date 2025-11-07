@@ -3,7 +3,8 @@ from typing import Any
 from dotenv import load_dotenv
 
 # Initialize logger at the top so it's available everywhere
-from logger.loggingFactory import logger_factory
+# Use absolute imports from the client package root to make it usable as a module
+from client.logger.loggingFactory import logger_factory
 logger = logger_factory.get_logger('config-reader')
 
 BOOLEANS=['ENFORCE_HTTPS', 'VERIFY_SSL_CERTS']

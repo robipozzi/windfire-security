@@ -2,7 +2,8 @@ import logging
 import logging.config
 import json
 import os
-from logger.colorFormatter import ColorFormatter
+# Use absolute imports from the client package root to make it usable as a module
+from client.logger.colorFormatter import ColorFormatter
 
 class LoggingFactory:
     env: str
@@ -20,8 +21,8 @@ class LoggingFactory:
         return os.path.join(self.config_dir, self.config_filename_template.format(self.env))
 
     def setup_logging(self):
-        """Setup logging configuration"""
         #print(f"====> START - setup_logging() called <====")
+        
         """Setup logging based on environment"""
         #print(f"*** setup_logging - Environment: {self.env}")
         config_file = f'logger/logging_config_{self.env}.json'
@@ -35,13 +36,35 @@ class LoggingFactory:
             logging.basicConfig(level=self.default_level)
             #print(f"Warning: {self.config_path} not found, using basic config")
         
+        """Set up logging configuration"""
+        #print(f"*** getLogger - Setting up logger for 'auth-client'")
+        logger = logging.getLogger('auth-client')
+        
         # Replace the formatter for the console handler
-        console_handler = logging.getLogger('auth-client').handlers[0]
+        # Only configure if not already configured (check for existing handlers)
+        if logger.handlers:
+            #print(f"*** Logger already has handlers")
+            for handler in logger.handlers:
+                # Set ColorFormatter for console handler
+                if isinstance(handler, logging.StreamHandler):
+                    #print(f"*** Setting ColorFormatter for console handler")
+                    handler.setFormatter(ColorFormatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+            
+            # Logger already has handlers, return
+            return
+        
+        # Create console handler if no handlers exist
+        #print(f"*** Creating console handler for logger.")
+        console_handler = logging.StreamHandler()
+        #print(f"*** Configuring ColorFormatter for console handler.")
         console_handler.setFormatter(ColorFormatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
         
+        # Add handler to logger
+        logger.addHandler(console_handler)
+
         #print("*** Logging is configured.")
         #print(f"====> END - setup_logging called <====")
-        return logging
+        return logger
 
     def get_logger(self, logger_name):
         """Ensure logging is configured and return a logger."""

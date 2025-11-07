@@ -21,3 +21,4 @@ client/*/__pycache__/
 client/__pycache__/
 client/.env
 client/app_rotating.log
+client.egg-info/

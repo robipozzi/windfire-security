@@ -1,14 +1,14 @@
 import uvicorn
 import os
-import httpx
 from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from colorama import Fore, Style, init
 from contextlib import asynccontextmanager
+# Import the AuthClient instance from the client package
+from client.authClient import authClient
 
 colorama_init = init(autoreset=True)
 verify_ssl = os.getenv("VERIFY_SSL_CERTS").lower() == "true"
-authUrl = os.getenv("AUTH_URL", "https://localhost:8443")
 
 # Application startup is managed by the lifespan context manager defined below.
 SERVICE_NAME = "Windfire Security Test Server"
@@ -63,32 +63,20 @@ async def test_endpoint(
 
     if not isinstance(payload, dict):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="JSON payload must be an object")
-
+    
     # Verify token by calling the external verification endpoint
-    try:
-        url = authUrl + "/verify"
-        token = credentials.credentials
-        http_headers = {"Content-Type": "application/json",
-                        "Authorization": f"Bearer {token}"}
-        async with httpx.AsyncClient(timeout=5.0, verify=verify_ssl) as client:
-            resp = await client.post(url, 
-                                     json=payload, 
-                                     headers=http_headers)
-    except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Token verification service unavailable: {e}",
-        )
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    token = credentials.credentials
+    print(Style.BRIGHT + Fore.BLUE + "Delegating token verification to authClient module ...")
+    print(Style.BRIGHT + Fore.BLUE + "Calling client.authClient.verify() ...")
+    isTokenValid = authClient.verify(token, service=payload.get("service"), method="remote")
 
-    if resp.status_code != 200:
+    if not isTokenValid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    print(f"Token verified successfully with response: {resp.json()}")
+    print(f"Token verified successfully for service: {payload.get('service')}")
     return {"message": "Test endpoint reached successfully"}
 
 # Health check endpoint

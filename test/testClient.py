@@ -1,6 +1,8 @@
 import requests
 import os
 from colorama import Fore, Style, init
+# Import the AuthClient instance from the client package
+from client.authClient import authClient
 
 colorama_init = init(autoreset=True)
 token = None
@@ -16,6 +18,7 @@ def test_health_endpoint_testserver():
     print(Style.BRIGHT + Fore.BLUE + "Calling /health endpoint on Test Server ...")
     url = testServerUrl + "/health"
     http_headers = {"Content-Type": "application/json"}
+    print(Style.BRIGHT + Fore.BLUE + f"Calling {url} ...")
     try:
         response = requests.get(url, headers=http_headers, timeout=5)
         print(f"GET {url} -> Status Code: {response.status_code}")
@@ -35,6 +38,7 @@ def test_health_endpoint_authserver():
     print(Style.BRIGHT + Fore.BLUE + "Calling /health endpoint on Auth Server ...")
     url = httpAuthServerUrl + "/health"
     http_headers = {"Content-Type": "application/json"}
+    print(Style.BRIGHT + Fore.BLUE + f"Calling {url} ...")
     try:
         response = requests.get(url, headers=http_headers, timeout=5, verify=verify_ssl)
         print(f"GET {url} -> Status Code: {response.status_code}")
@@ -51,37 +55,19 @@ def test_health_endpoint_authserver():
         print(Style.BRIGHT + Fore.LIGHTRED_EX + f"Request error: {e}")
 
 def authenticate():
-    print(Style.BRIGHT + Fore.BLUE + "Calling /auth endpoint on Authentication Server ...")
-    print(Style.BRIGHT + Fore.BLUE + "Authenticating to obtain access token ...")
-    url = httpsAuthServerUrl + "/auth"
-    http_headers = {"Content-Type": "application/json"}
+    print(Style.BRIGHT + Fore.BLUE + "Delegating authentication to authClient module ...")
     try:
-        print(Style.BRIGHT + Fore.BLUE + f"Service: {service}")
-        print(Style.BRIGHT + Fore.BLUE + f"Username: {username}")
-        # ****** START - Uncomment for debug purposes in development ONLY ********
-        # print(Style.BRIGHT + Fore.BLUE + f"Password: {'*' * len(password)}")
-        # ****** END - Uncomment for debug purposes in development ONLY ********
-        response = requests.post(url,
-                                 json={'username': username, 
-                                        'password': password, 
-                                        'service': service},
-                                 headers=http_headers,
-                                 verify=verify_ssl)
-        access_token = response.json()['access_token']
-        print(f"Return Code: {response.status_code}\n")
-        # ****** START - Uncomment for debug purposes in development ONLY ********
-        #print(f"Response Body: {response.__dict__}\n")
-        #print(f"Access Token: {access_token}\n")
-        # ****** END - Uncomment for debug purposes in development ONLY ********
-        if not access_token is None:
+        print(Style.BRIGHT + Fore.BLUE + "Calling client.authClient.authenticate() ...")
+        access_token = authClient.authenticate(username, password, service)
+        if access_token:
             print(Style.NORMAL + Fore.GREEN + "Authentication successful")
-    except Exception:
+        else:
+            print(Style.BRIGHT + Fore.LIGHTRED_EX + "Authentication failed")
+    except Exception as e:
         access_token = None
-        print(Style.BRIGHT + Fore.LIGHTRED_EX + "Authentication failed")
-        print(f"Response: {response.__dict__} \n")
-        print("POST Status Code:", response.status_code) 
+        print(Style.BRIGHT + Fore.LIGHTRED_EX + f"Authentication error: {e}")
     return access_token
-            
+
 def test_secure_endpoint():
     print(Style.BRIGHT + Fore.BLUE + "Call /test secure endpoint on Test Server ...")
     # ****** START - Uncomment for debug purposes in development ONLY *******
@@ -98,6 +84,7 @@ def test_secure_endpoint():
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}"
     }
+    print(Style.BRIGHT + Fore.BLUE + f"Calling {url} ...")
     try:
         response = requests.post(url, 
                                  json=payload, 
@@ -121,24 +108,24 @@ def main():
     print(Style.BRIGHT + Fore.GREEN +"##### Testing Windfire Security Authentication Service Endpoints #####")
     print(Style.BRIGHT + Fore.GREEN +"######################################################################")
     print("")
-    print(Style.BRIGHT + Fore.CYAN +"############################################################################")
-    print(Style.BRIGHT + Fore.CYAN +"##### Test Health endpoint on Test Server (NO SSL & NOT AUTHENTICATED) #####")
-    print(Style.BRIGHT + Fore.CYAN +"############################################################################")
+    print(Style.BRIGHT + Fore.CYAN +"#####################################################################################")
+    print(Style.BRIGHT + Fore.CYAN +"##### Test Health endpoint on Test Server (NOT AUTHENTICATED & NO SSL ENFORCED) #####")
+    print(Style.BRIGHT + Fore.CYAN +"#####################################################################################")
     test_health_endpoint_testserver()
     print("")
-    print(Style.BRIGHT + Fore.CYAN +"############################################################################")
-    print(Style.BRIGHT + Fore.CYAN +"##### Test Health endpoint on Auth Server (NO SSL & NOT AUTHENTICATED) #####")
-    print(Style.BRIGHT + Fore.CYAN +"############################################################################")
+    print(Style.BRIGHT + Fore.CYAN +"##################################################################################")
+    print(Style.BRIGHT + Fore.CYAN +"##### Test Health endpoint on Auth Server (NOT AUTHENTICATED & SSL ENFORCED) #####")
+    print(Style.BRIGHT + Fore.CYAN +"##################################################################################")
     test_health_endpoint_authserver()
     print("")
-    print(Style.BRIGHT + Fore.CYAN +"#####################################################")
-    print(Style.BRIGHT + Fore.CYAN +"##### Authenticate to Windfire Security service #####")
-    print(Style.BRIGHT + Fore.CYAN +"#####################################################")
+    print(Style.BRIGHT + Fore.CYAN +"####################################################################")
+    print(Style.BRIGHT + Fore.CYAN +"##### Authenticate to Windfire Security service (SSL ENFORCED) #####")
+    print(Style.BRIGHT + Fore.CYAN +"####################################################################")
     token = authenticate()
     print("")
-    print(Style.BRIGHT + Fore.CYAN +"###########################################")
-    print(Style.BRIGHT + Fore.CYAN +"##### Test call to a secured endpoint #####")
-    print(Style.BRIGHT + Fore.CYAN +"###########################################")
+    print(Style.BRIGHT + Fore.CYAN +"#############################################################################")
+    print(Style.BRIGHT + Fore.CYAN +"##### Test call to a secured endpoint (AUTHENTICATED & NO SSL ENFORCED) #####")
+    print(Style.BRIGHT + Fore.CYAN +"#############################################################################")
     test_secure_endpoint()
     print("")
     

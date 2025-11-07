@@ -2,11 +2,13 @@ import requests
 from typing import Dict, Any
 
 # Initialize logger at the top so it's available everywhere
-from logger.loggingFactory import logger_factory
+# Use absolute imports from the client package root to make it usable as a module
+from client.logger.loggingFactory import logger_factory
 logger = logger_factory.get_logger('auth-client')
 
 # Load configuration
-from config.config_reader import config
+# Use absolute imports from the client package root to make it usable as a module
+from client.config.config_reader import config
 
 class AuthClient:
     """Client for authentication and token verification"""

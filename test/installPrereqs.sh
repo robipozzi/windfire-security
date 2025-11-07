@@ -10,6 +10,15 @@ installPythonModules()
                 uvicorn[standard]==0.24.0 \
                 httpx==0.28.1
 }
+installCustomPythonModules()
+{
+    pip3 install -e $HOME/dev/windfire-security
+}
 
 # ***** MAIN EXECUTION
+echo "Installing Python prerequisites..."
 installPythonModules
+echo "Python prerequisites installation complete."
+echo "Installing custom Python prerequisites..."
+installCustomPythonModules
+echo "Custom Python prerequisites installation complete."

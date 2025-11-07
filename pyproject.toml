@@ -1,0 +1,15 @@
+[project]
+name = "client"
+version = "1.0.0"
+description = "Authentication client package with config and logging"
+requires-python = ">=3.7"
+dependencies = [
+    "requests"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
