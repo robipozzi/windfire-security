@@ -6,7 +6,7 @@ from typing import Dict, Any
 from datetime import datetime, timedelta
 
 # Initialize logger at the top so it's available everywhere
-from log.loggingFactory import logger_factory
+from logger.loggingFactory import logger_factory
 logger = logger_factory.get_logger('keycloak-auth')
 
 # Load configuration

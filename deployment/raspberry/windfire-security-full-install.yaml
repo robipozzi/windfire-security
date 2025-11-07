@@ -1,0 +1,55 @@
+--- # Ansible Playbook to configure a set of Raspberry PIs in a consistent and repeatable way
+# Software installation and configuration
+- hosts: sensors
+  remote_user: "{{ user }}"
+  become: yes
+  vars:
+    src_dir: "{{ playbook_dir }}"
+    mode: u=rwx
+  vars_files:
+    - "{{ src_dir }}/conf/config.yml"
+  pre_tasks:
+    ###############################################
+    ##### Update package manager repositories #####
+    ###############################################
+    - name: Update package manager repositories cache
+      apt:
+        update_cache: yes
+    ######################################
+    ##### Upgrade installed packages #####
+    ######################################
+    - name: Upgrade installed packages
+      apt:
+        upgrade: dist
+    - name: Remove useless packages from the cache
+      apt:
+        autoclean: yes
+    - name: Remove dependencies that are no longer required
+      apt:
+        autoremove: yes
+    ###########################
+    ##### Openssl Section #####
+    ###########################
+    - name: Install Openssl 
+      apt: 
+        name: openssl 
+        state: present
+  tasks:
+    ####################################################
+    ##### Sensor client program deployment Section #####
+    ####################################################
+    - name: Create Python initial virtualenv in {{ remote_homeautomation_dir }}
+      command: "python -m venv {{ remote_homeautomation_dir }}"
+      args:
+        creates: "{{ remote_homeautomation_dir }}"
+    - name: Copy sensor client programs to "{{ remote_homeautomation_dir }}/sensor" folder on remote server
+      copy:
+        src: "../../sensor"
+        dest: "{{ remote_homeautomation_dir }}"
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: "{{ mode }}"
+    - name: Install required Python modules in {{ remote_homeautomation_dir }} virtualenv 
+      pip: 
+        requirements={{ remote_homeautomation_dir }}/sensor/requirements.txt 
+        virtualenv="{{ remote_homeautomation_dir }}"

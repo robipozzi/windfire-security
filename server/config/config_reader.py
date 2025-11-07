@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 
 # Initialize logger at the top so it's available everywhere
-from log.loggingFactory import logger_factory
+from logger.loggingFactory import logger_factory
 logger = logger_factory.get_logger('config-reader')
 
 # Load environment from .env file

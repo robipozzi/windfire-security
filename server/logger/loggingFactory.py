@@ -2,7 +2,7 @@ import logging
 import logging.config
 import json
 import os
-from log.colorFormatter import ColorFormatter
+from logger.colorFormatter import ColorFormatter
 
 class LoggingFactory:
     env: str

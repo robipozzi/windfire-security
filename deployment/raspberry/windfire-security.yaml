@@ -1,0 +1,30 @@
+--- # Ansible Playbook to configure a set of Raspberry PIs in a consistent and repeatable way
+# Software installation and configuration
+- hosts: sensors
+  remote_user: "{{ user }}"
+  become: yes
+  become_user: "{{ user }}"
+  vars:
+    src_dir: "{{ playbook_dir }}"
+    mode: u=rwx
+  vars_files:
+    - "{{ src_dir }}/conf/config.yml"
+  tasks:
+    #################################################################
+    ##### Windfire Security server component deployment Section #####
+    #################################################################
+    - name: Create Python initial virtualenv in {{ remote_windfire_security_dir }}
+      command: "python -m venv {{ remote_windfire_security_dir }}"
+      args:
+        creates: "{{ remote_windfire_security_dir }}"
+    - name: Copy Windfire Security server component to "{{ remote_windfire_security_dir }}/sensor" folder on remote server
+      copy:
+        src: "../../server"
+        dest: "{{ remote_windfire_security_dir }}"
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: "{{ mode }}"
+    - name: Install required Python modules in {{ remote_windfire_security_dir }} virtualenv 
+      pip: 
+        requirements={{ remote_windfire_security_dir }}/sensor/requirements.txt 
+        virtualenv="{{ remote_windfire_security_dir }}"
