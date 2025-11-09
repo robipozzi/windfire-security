@@ -1,6 +1,6 @@
 --- # Ansible Playbook to configure a set of Raspberry PIs in a consistent and repeatable way
 # Software installation and configuration
-- host- hosts: security_service
+- hosts: security_service
   remote_user: "{{ user }}"
   become: yes
   become_user: "{{ user }}"
@@ -9,32 +9,6 @@
     mode: u=rwx
   vars_files:
     - "{{ src_dir }}/conf/config.yaml"
-  pre_tasks:
-    ###############################################
-    ##### Update package manager repositories #####
-    ###############################################
-    - name: Update package manager repositories cache
-      apt:
-        update_cache: yes
-    ######################################
-    ##### Upgrade installed packages #####
-    ######################################
-    - name: Upgrade installed packages
-      apt:
-        upgrade: dist
-    - name: Remove useless packages from the cache
-      apt:
-        autoclean: yes
-    - name: Remove dependencies that are no longer required
-      apt:
-        autoremove: yes
-    ###########################
-    ##### Openssl Section #####
-    ###########################
-    - name: Install Openssl 
-      apt: 
-        name: openssl 
-        state: present
   tasks:
     #################################################################
     ##### Windfire Security server component deployment Section #####

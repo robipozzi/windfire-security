@@ -1,1 +1,1 @@
-ansible-playbook windfire-security.yaml
+ansible-playbook windfire-security-install.yaml

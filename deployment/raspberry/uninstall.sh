@@ -1,0 +1,1 @@
+ansible-playbook windfire-security-uninstall.yaml

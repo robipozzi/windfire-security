@@ -1,0 +1,8 @@
+user: pi
+group: pi
+remote_home_dir: /home/pi
+remote_windfire_security_dir: "{{ remote_home_dir }}/windfire-security"
+venv_path: "{{ remote_windfire_security_dir }}/server/windfire-security-server"
+python_interpreter: "python3"
+install_python_modules_script: installPrereqs.sh
+run_server_script: run-auth-service.sh

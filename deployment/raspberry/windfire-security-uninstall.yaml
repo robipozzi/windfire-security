@@ -1,0 +1,20 @@
+--- # Ansible Playbook to configure a set of Raspberry PIs in a consistent and repeatable way
+# Software installation and configuration
+- hosts: security_service
+  remote_user: "{{ user }}"
+  become: yes
+  become_user: "{{ user }}"
+  vars:
+    src_dir: "{{ playbook_dir }}"
+    mode: u=rwx
+  vars_files:
+    - "{{ src_dir }}/conf/config.yaml"
+  tasks:
+    ################################################################
+    ##### Windfire Security server component uninstall Section #####
+    ################################################################
+    # Task 1: Delete Windfire Security directory on remote server
+    - name: Remove "{{ remote_windfire_security_dir }}" folder and all its contents on remote server 
+      ansible.builtin.file:
+        path: "{{ remote_windfire_security_dir }}"
+        state: absent
