@@ -54,10 +54,10 @@ DEFAULT_PEM_TRUSTSTORE=keycloak.truststore.pem
 ###### Function section - START
 printSelectEnvironment()
 {
-	echo ${grn}Select environment : ${end}
-    echo "${grn}1. Development${end}"
-	echo "${grn}2. Test${end}"
-    echo "${grn}3. Production${end}"
+	echo ${blu}Select environment : ${end}
+    echo "${blu}1. Development${end}"
+	echo "${blu}2. Test${end}"
+    echo "${blu}3. Production${end}"
 	read ENVIRONMENT_SELECTION
 	setEnvironment
 }
