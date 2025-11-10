@@ -12,6 +12,7 @@ server/*/__pycache__/
 server/__pycache__/
 server/.env
 server/app_rotating.log
+server/windfire_security_server.log
 test/windfire-security-test/
 test/*/__pycache__/
 test/__pycache__/
