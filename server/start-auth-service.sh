@@ -13,16 +13,16 @@ main()
     echo    4. Start the Authentication Service FastAPI server
     echo 
     source ./createPythonVenv.sh
-    run
+    run $1
 }
 
 run()
 {
-    printSelectEnvironment
+    printSelectEnvironment $1
     echo ${cyn}Running authentication service in environment : $ENVIRONMENT${end}
     ENVIRONMENT=$ENVIRONMENT \
     python3 authService.py
 }
 
 # ***** MAIN EXECUTION
-main
+main $1
