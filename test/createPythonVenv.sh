@@ -1,12 +1,37 @@
 source ../setenv.sh
 
 # ***** Create Python Virtual environment
-run()
+main()
 {
-    echo ${grn}Creating Python3 Virtual Environment ...${end}
+    echo ${blu}"#########################################################"${end}
+    echo ${blu}"########## Python Virtual Environment creation ##########"${end}
+    echo ${blu}"#########################################################"${end}
+    # Check if the directory exists
+    echo Check if Python virtual environment ${blu}$PYTORCH_TEST_VIRTUAL_ENV${end} exists
+    if [ -d "$PYTORCH_TEST_VIRTUAL_ENV" ]; then
+        echo "Python virtual environment ${blu}$PYTORCH_TEST_VIRTUAL_ENV${end} exists, activating ..."
+        echo
+        activate
+    else
+        echo "${mag}Python virtual environment $PYTORCH_TEST_VIRTUAL_ENV does not exist, creating ..."${end}
+        echo
+        create
+        echo
+        activate
+    fi
+}
+
+create()
+{
+    echo Creating Python Virtual Environment ...
     python3 -m venv $PYTORCH_TEST_VIRTUAL_ENV
-    echo ${grn}Python3 Virtual Environment created${end}
+    echo ${grn}Python Virtual Environment created${end}
+}
+
+activate()
+{
+    source ./activatePythonVenv.sh
 }
 
 # ***** MAIN EXECUTION
-run
+main

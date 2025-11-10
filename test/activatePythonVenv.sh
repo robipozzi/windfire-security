@@ -3,23 +3,22 @@ source ../setenv.sh
 # ***** Activate Python Virtual environment
 main()
 {
-    # Check if the directory exists
-    echo Check if Python virtual environment ${blu}$PYTORCH_TEST_VIRTUAL_ENV${end} exists
-    if [ -d "$PYTORCH_TEST_VIRTUAL_ENV" ]; then
-        echo "Python virtual environment ${blu}$PYTORCH_TEST_VIRTUAL_ENV${end} exists, activating ..."
-        activate
-    else
-        echo "Python virtual environment ${blu}$PYTORCH_TEST_VIRTUAL_ENV${end} does not exist, creating ..."
-        source ./createPythonVenv.sh
-        activate
+    echo ${blu}"###########################################################"${end}
+    echo ${blu}"########## Python Virtual Environment activation ##########"${end}
+    echo ${blu}"###########################################################"${end}
+    # Ensure the environment variable is set
+    if [ -z "$PYTORCH_TEST_VIRTUAL_ENV" ]; then
+        echo "${mag}PYTORCH_TEST_VIRTUAL_ENV${end} is not set"
+        exit 1
     fi
-}
 
-# ***** Activate Python Virtual environment
-activate()
-{
-    echo ${grn}To activate Python3 Virtual Environment, copy the following command on a shell${end}
-    echo ${blu}source $PYTORCH_TEST_VIRTUAL_ENV/bin/activate${end}
+    # Activate the virtual environment
+    echo "${blu}PYTORCH_TEST_VIRTUAL_ENV${end} is set to ${blu}$PYTORCH_TEST_VIRTUAL_ENV${end}, proceeding to activate ..."
+    echo Activating Python Virtual Environment with command ${blu}source $PYTORCH_TEST_VIRTUAL_ENV/bin/activate${end}...
+    source "$PYTORCH_TEST_VIRTUAL_ENV/bin/activate"
+    echo ${grn}Python Virtual Environment activated${end}
+    echo 
+    source ./installPrereqs.sh
 }
 
 # ***** MAIN EXECUTION

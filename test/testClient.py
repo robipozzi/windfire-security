@@ -10,8 +10,7 @@ username = os.getenv("USERNAME")
 password = os.getenv("PASSWORD")
 service = os.getenv("SERVICE")
 verify_ssl = os.getenv("VERIFY_SSL_CERTS").lower() == "true"
-httpAuthServerUrl = os.getenv("HTTP_AUTH_SERVER_URL", "https://localhost:8443")
-httpsAuthServerUrl = os.getenv("HTTPS_AUTH_SERVER_URL", "https://localhost:8443")
+httpsAuthServerUrl = os.getenv("HTTPS_AUTH_SERVER_URL", "https://raspberry01:8443")
 testServerUrl = os.getenv("TEST_SERVER_URL", "http://localhost:8001")
 
 def test_health_endpoint_testserver():
@@ -36,7 +35,7 @@ def test_health_endpoint_testserver():
 
 def test_health_endpoint_authserver():
     print(Style.BRIGHT + Fore.BLUE + "Calling /health endpoint on Auth Server ...")
-    url = httpAuthServerUrl + "/health"
+    url = httpsAuthServerUrl + "/health"
     http_headers = {"Content-Type": "application/json"}
     print(Style.BRIGHT + Fore.BLUE + f"Calling {url} ...")
     try:
