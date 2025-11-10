@@ -6,3 +6,5 @@ venv_path: "{{ remote_windfire_security_dir }}/server/windfire-security-server"
 python_interpreter: "python3"
 install_python_modules_script: installPrereqs.sh
 run_server_script: run-auth-service.sh
+stop_server_script: stop-auth-service.sh
+process: authService.py

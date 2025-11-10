@@ -13,7 +13,30 @@
     ################################################################
     ##### Windfire Security server component uninstall Section #####
     ################################################################
-    # Task 1: Delete Windfire Security directory on remote server
+    # Task 1: Stop Windfire Security service on remote server
+    - name: Get PID for running process "{{ process }}"
+      shell: "pgrep -f {{ process }}"
+      register: app_pid
+      failed_when: app_pid.rc > 1
+    
+    - name: Kill "{{ process }}" process gracefully
+      shell: "kill -TERM {{ item }}"
+      with_items: "{{ app_pid.stdout_lines }}"
+      when: app_pid.rc == 0
+      register: kill_result
+      failed_when:
+        - kill_result.rc != 0
+        - '"No such process" not in kill_result.stderr'
+
+    - name: Wait for "{{ process }}" process graceful termination
+      wait_for:
+        path: "/proc/{{ item }}/status"
+        state: absent
+      with_items: "{{ app_pid.stdout_lines }}"
+      when: app_pid.rc == 0
+      ignore_errors: yes
+    
+    # Task 2: Delete Windfire Security directory on remote server
     - name: Remove "{{ remote_windfire_security_dir }}" folder and all its contents on remote server 
       ansible.builtin.file:
         path: "{{ remote_windfire_security_dir }}"
