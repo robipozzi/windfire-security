@@ -3,9 +3,9 @@ source ../setenv.sh
 # ***** Start FastAPI server for Authentication Service
 main()
 {
-    echo ${blu}#################################################################${end}
+    echo ${blu}"#################################################################"${end}
     echo ${blu}"############### Windfire Security Service startup ###############"${end}
-    echo ${blu}#################################################################${end}
+    echo ${blu}"#################################################################"${end}
     echo This script will run the following steps:
     echo    1. Create a Python Virtual Environment, if does not exist
     echo    2. Activate the Python Virtual Environment

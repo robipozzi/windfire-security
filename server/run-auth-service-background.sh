@@ -1,0 +1,1 @@
+./start-auth-service.sh 3 > windfire_security_server.log 2>&1 &
