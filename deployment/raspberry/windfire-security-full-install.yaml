@@ -47,13 +47,14 @@
     
     # Task 2: Create Windfire Security directory on remote server and copy files
     - name: Copy Windfire Security server component to "{{ remote_windfire_security_dir }}" directory on remote server
-      copy:
+      ansible.builtin.synchronize:
         src: "../../server"
         dest: "{{ remote_windfire_security_dir }}"
-        owner: "{{ user }}"
-        group: "{{ group }}"
-        mode: "{{ mode }}"
-    
+        rsync_opts:
+          - "--exclude=windfire-security-server"
+          - "--exclude=__pycache__"
+          - "--exclude=.env_PLACEHOLDER"
+
     # Task 3: Copy setenv.sh to remote server
     - name: Copy setenv.sh to "{{ remote_windfire_security_dir }}" directory on remote server
       copy:
@@ -76,7 +77,6 @@
         executable: /bin/bash
       register: python_version
       changed_when: false
-    
     - name: Display Python version in virtualenv
       debug:
         msg: "Python version in virtualenv: {{ python_version.stdout }}"
@@ -88,11 +88,6 @@
         bash {{ remote_windfire_security_dir }}/server/{{ install_python_modules_script }}
       args:
         executable: /bin/bash
-    # - name: Install required Python modules in virtualenv
-    #   pip:
-    #     requirements: "{{ remote_windfire_security_dir }}/server/requirements.txt"
-    #     virtualenv: "{{ venv_path }}"
-    #     virtualenv_python: "{{ python_interpreter }}"
       
     # Task 7: List installed packages
     - name: List installed packages in virtualenv
@@ -100,7 +95,6 @@
         cmd: "{{ venv_path }}/bin/pip list"
       register: pip_list
       changed_when: false
-    
     - name: Display installed packages
       debug:
         var: pip_list.stdout_lines
