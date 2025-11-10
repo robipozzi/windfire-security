@@ -17,16 +17,6 @@ logger = logger_factory.get_logger('auth-service')
 # Load configuration 
 from config.config_reader import config
 
-#############################################
-########## Security Configurations ##########
-#############################################
-# Instantiates FastAPI’s HTTPBearer dependency 
-# It extracts a Bearer token from the Authorization header of incoming requests. 
-security = HTTPBearer()
-# HTTPs enforcement and allowed hosts from config
-ENFORCE_HTTPS = config.get('ENFORCE_HTTPS')
-ALLOWED_HOSTS = config.get('ALLOWED_HOSTS').split(',')
-
 # Application startup is managed by the lifespan context manager defined below.
 SERVICE_NAME = "Windfire Security Authentication Service"
 @asynccontextmanager
@@ -49,6 +39,16 @@ app = FastAPI(
     lifespan=lifespan,
     redirect_slashes=False
 )
+
+#####################################################
+########## START - Security Configurations ##########
+#####################################################
+# Instantiates FastAPI’s HTTPBearer dependency 
+# It extracts a Bearer token from the Authorization header of incoming requests. 
+security = HTTPBearer()
+# HTTPs enforcement and allowed hosts from config
+ENFORCE_HTTPS = config.get('ENFORCE_HTTPS')
+ALLOWED_HOSTS = config.get('ALLOWED_HOSTS').split(',')
 
 # Custom HTTPS enforcement middleware
 @app.middleware("http")
@@ -102,6 +102,9 @@ if ENFORCE_HTTPS == True:
     logger.info("🔒 HTTPS enforcement enabled - all HTTP requests will be redirected to HTTPS")
 else:
     logger.warning("⚠️  HTTPS enforcement disabled - API accessible via HTTP (not recommended for production)")
+###################################################
+########## END - Security Configurations ##########
+###################################################
 
 # Pydantic models for Keycloak authentication requests and responses
 class KeycloakLoginRequest(BaseModel):
