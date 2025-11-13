@@ -195,7 +195,7 @@ async def health_check():
 
 # Main entry point
 if __name__ == "__main__":
-    logger.info("Starting FastAPI server...")
+    logger.info("Starting Windfire Security FastAPI server...")
     # Get SSL configuration from environment variables
     ssl_keyfile = config.get('SSL_KEYFILE')
     ssl_certfile = config.get('SSL_CERTFILE')
