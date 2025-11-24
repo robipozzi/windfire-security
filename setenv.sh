@@ -12,7 +12,6 @@ coffee3="${coffee} ${coffee} ${coffee}"
 
 ###### Variable section - START
 PYTORCH_SERVER_VIRTUAL_ENV=windfire-security-server
-PYTORCH_CLIENT_VIRTUAL_ENV=windfire-security-client
 PYTORCH_TEST_VIRTUAL_ENV=windfire-security-test
 ENVIRONMENT=
 DEFAULT_USERNAME=windfire
