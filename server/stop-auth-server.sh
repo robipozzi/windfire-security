@@ -1,6 +1,6 @@
 source ../setenv.sh
 
-PROCESS_TO_KILL=authService.py
+PROCESS_TO_KILL=authServer.py
 PID=
 
 # ***** Stop FastAPI server for Authentication Service

@@ -1,16 +1,13 @@
-import requests
 import os
-import jwt
+import requests # pyright: ignore[reportMissingModuleSource]
+import jwt # pyright: ignore[reportMissingImports]
 import json
 from typing import Dict, Any
 from datetime import datetime, timedelta
-
-# Initialize logger at the top so it's available everywhere
-from logger.loggingFactory import logger_factory
-logger = logger_factory.get_logger('keycloak-auth')
-
-# Load configuration
-from config.config_reader import config
+from config.settings import settings
+# Initialize logger at the top so it's available everywhere 
+from logger.loggerFactory import logger_factory
+logger = logger_factory.get_logger('keycloakAuth')
 
 class KeycloakAuthError(Exception):
     """Custom exception for Keycloak authentication errors"""
