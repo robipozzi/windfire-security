@@ -344,7 +344,7 @@ class KeycloakAuth:
             
             # Method 1: Try PyJWT's RSAAlgorithm (PyJWT >= 2.0)
             try:
-                from jwt.algorithms import RSAAlgorithm
+                from jwt.algorithms import RSAAlgorithm # pyright: ignore[reportMissingImports]
                 public_key = RSAAlgorithm.from_jwk(json.dumps(public_key_data))
                 logger.debug("Using PyJWT RSAAlgorithm for key conversion")
             except (ImportError, AttributeError) as e:
@@ -353,8 +353,8 @@ class KeycloakAuth:
             # Method 2: Manual conversion using cryptography
             if public_key is None:
                 try:
-                    from cryptography.hazmat.primitives.asymmetric import rsa
-                    from cryptography.hazmat.backends import default_backend
+                    from cryptography.hazmat.primitives.asymmetric import rsa # pyright: ignore[reportMissingImports]
+                    from cryptography.hazmat.backends import default_backend # pyright: ignore[reportMissingImports]
                     import base64
                     
                     if public_key_data.get('kty') != 'RSA':
@@ -455,7 +455,7 @@ class KeycloakAuth:
             # Convert JWK to PEM format
             try:
                 # Try using PyJWT's built-in method first (works in PyJWT >= 2.0)
-                from jwt.algorithms import RSAAlgorithm
+                from jwt.algorithms import RSAAlgorithm # pyright: ignore[reportMissingImports]
                 public_key = RSAAlgorithm.from_jwk(json.dumps(public_key_data))
             except (ImportError, AttributeError):
                 # Fallback: manually convert JWK to RSA public key
