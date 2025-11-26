@@ -94,7 +94,7 @@ class ServiceConfigReader:
             try:
                 self._validate_service_config(service_name, service_config)
                 srv_client_id=service_config['client_id']
-                srv_client_secret = os.getenv(f"{srv_client_id}_KEYCLOAK_CLIENT_SECRET")
+                srv_client_secret=service_config['client_secret']
                 # Create ServiceConfig object
                 self.config[service_name] = ServiceConfig(
                     realm=service_config['realm'],

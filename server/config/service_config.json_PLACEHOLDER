@@ -1,0 +1,9 @@
+{
+  "services": {
+    "windfire-calendar-srv": {
+      "realm": "<PUT_YOUR_REALM>",
+      "client_id": "<PUT_YOUR_CLIENT_ID>",
+      "client_secret": "<PUT_YOUR_CLIENT_SECRET>"
+    }
+  }
+}

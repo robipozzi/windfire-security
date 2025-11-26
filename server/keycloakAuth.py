@@ -3,10 +3,8 @@ import jwt # pyright: ignore[reportMissingImports]
 import json
 from typing import Dict, Any
 from datetime import datetime, timedelta
-# TODO - START: refactor config
 from config.service_config_reader import serviceConfig
 from config.settings import settings
-# TODO - END: refactor config
 # Initialize logger at the top so it's available everywhere 
 from logger.loggerFactory import logger_factory
 logger = logger_factory.get_logger('keycloakAuth')
@@ -22,10 +20,13 @@ class KeycloakConfig:
         server_url: str = None,
         service: str = None,
     ):    
+        logger.debug(f"KeycloakConfig: Initializing configuration")
         self.server_url = server_url or settings.get('KEYCLOAK_SERVER_URL')
         self.service = service
         servicecfg = None
+        logger.debug(f"self.service is set to: {self.service}")
         if not self.service is None:
+            logger.debug(f"self.service is not None, getting service config")
             servicecfg = serviceConfig.get_service(self.service)
             logger.debug(f"KeycloakConfig: got service config for {self.service}: {servicecfg}")
             self.realm = servicecfg.realm
@@ -82,7 +83,7 @@ class KeycloakAuth:
         Raises:
             KeycloakAuthError: If authentication fails
         """
-        logger.debug(f"Method authenticate_with_password() called")
+        logger.debug(f"---> Function authenticate_with_password() called <---")
         logger.info(f"Authenticating user: {username}")
         
         payload = {
@@ -93,11 +94,11 @@ class KeycloakAuth:
         }
         
         if self.config.client_secret:
+            logger.debug(f"Adding client_secret to payload for client_id: {self.config.client_id}")
             payload['client_secret'] = self.config.client_secret
         
         try:
             logger.info(f"self.config.token_endpoint: {self.config.token_endpoint}")
-            #logger.debug(f"Payload: {payload}")
 
             response = self.session.post(
                 self.config.token_endpoint,
@@ -126,9 +127,11 @@ class KeycloakAuth:
         Raises:
             KeycloakAuthError: If authentication fails
         """
+        logger.debug(f"---> Function authenticate_with_client_credentials() called <---")
         logger.info(f"Authenticating with client credentials: {self.config.client_id}")
         
         if not self.config.client_secret:
+            logger.error("Client secret is required for client credentials flow")
             raise KeycloakAuthError("Client secret is required for client credentials flow")
         
         payload = {
@@ -168,9 +171,11 @@ class KeycloakAuth:
         Raises:
             KeycloakAuthError: If refresh fails
         """
+        logger.debug(f"---> Function refresh_access_token() called <---")
         token_to_use = refresh_token or self.refresh_token
         
         if not token_to_use:
+            logger.error("No refresh token available for refreshing access token")
             raise KeycloakAuthError("No refresh token available")
         
         logger.info("Refreshing access token")
@@ -182,6 +187,7 @@ class KeycloakAuth:
         }
         
         if self.config.client_secret:
+            logger.debug(f"Adding client_secret to payload for client_id: {self.config.client_id}")
             payload['client_secret'] = self.config.client_secret
         
         try:
@@ -215,9 +221,11 @@ class KeycloakAuth:
         Raises:
             KeycloakAuthError: If request fails
         """
+        logger.debug(f"---> Function get_user_info() called <---")
         token = access_token or self.access_token
         
         if not token:
+            logger.error("No access token available for fetching user info")
             raise KeycloakAuthError("No access token available")
         
         logger.info("Fetching user information")
@@ -254,6 +262,7 @@ class KeycloakAuth:
         Raises:
             KeycloakAuthError: If introspection fails
         """
+        logger.debug(f"---> Function introspect_token() called <---")
         logger.info("Introspecting token")
         
         payload = {
@@ -267,12 +276,14 @@ class KeycloakAuth:
         # Use HTTP Basic Auth (recommended and more reliable)
         if use_basic_auth:
             if not self.config.client_secret:
+                logger.error("No Client secret found, client secret is required for token introspection")
                 raise KeycloakAuthError("Client secret is required for token introspection")
             auth = (self.config.client_id, self.config.client_secret)
         else:
             # Alternative: include credentials in payload
             payload['client_id'] = self.config.client_id
             if self.config.client_secret:
+                logger.debug(f"Adding client_secret to payload for client_id: {self.config.client_id}")
                 payload['client_secret'] = self.config.client_secret
         
         try:
@@ -314,6 +325,7 @@ class KeycloakAuth:
         Raises:
             KeycloakAuthError: If verification fails
         """
+        logger.debug(f"---> Function verify_token_locally() called <---")
         logger.info("Verifying token locally using public keys")
         
         try:
@@ -324,6 +336,7 @@ class KeycloakAuth:
             kid = unverified_header.get('kid')
             
             if not kid:
+                logger.error("Token has no 'kid' in header")
                 raise KeycloakAuthError("Token has no 'kid' in header")
             
             # Get public keys from Keycloak
@@ -337,6 +350,7 @@ class KeycloakAuth:
                     break
             
             if not public_key_data:
+                logger.error(f"Public key with kid '{kid}' not found")
                 raise KeycloakAuthError(f"Public key with kid '{kid}' not found")
             
             # Convert JWK to PEM format - try multiple methods
@@ -348,7 +362,7 @@ class KeycloakAuth:
                 public_key = RSAAlgorithm.from_jwk(json.dumps(public_key_data))
                 logger.debug("Using PyJWT RSAAlgorithm for key conversion")
             except (ImportError, AttributeError) as e:
-                logger.debug(f"PyJWT RSAAlgorithm not available: {e}")
+                logger.error(f"PyJWT RSAAlgorithm not available: {e}")
             
             # Method 2: Manual conversion using cryptography
             if public_key is None:
@@ -358,6 +372,7 @@ class KeycloakAuth:
                     import base64
                     
                     if public_key_data.get('kty') != 'RSA':
+                        logger.error(f"Unsupported key type: {public_key_data.get('kty')}")
                         raise KeycloakAuthError(f"Unsupported key type: {public_key_data.get('kty')}")
                     
                     # Decode base64url encoded components
@@ -375,9 +390,11 @@ class KeycloakAuth:
                     logger.debug("Using manual cryptography conversion for key")
                     
                 except Exception as e:
+                    logger.error(f"Failed to convert JWK to public key: {str(e)}")
                     raise KeycloakAuthError(f"Failed to convert JWK to public key: {str(e)}")
             
             if public_key is None:
+                logger.error("Could not convert JWK to public key")
                 raise KeycloakAuthError("Could not convert JWK to public key")
             
             # Decode and verify token
@@ -412,8 +429,6 @@ class KeycloakAuth:
         except Exception as e:
             logger.error(f"Token verification error: {str(e)}")
             raise KeycloakAuthError(f"Token verification error: {str(e)}")
-
-
 
     def _________verify_token_locally(self, token: str) -> Dict[str, Any]:
         """
@@ -503,6 +518,7 @@ class KeycloakAuth:
         Raises:
             KeycloakAuthError: If retrieval fails
         """
+        logger.debug(f"---> Function get_public_keys() called <---")
         logger.info("Fetching public keys (JWKS)")
         
         try:
@@ -530,6 +546,7 @@ class KeycloakAuth:
         Raises:
             KeycloakAuthError: If logout fails
         """
+        logger.debug(f"---> Function logout() called <---")
         token_to_revoke = refresh_token or self.refresh_token
         
         if not token_to_revoke:
@@ -544,6 +561,7 @@ class KeycloakAuth:
         }
         
         if self.config.client_secret:
+            logger.debug(f"Adding client_secret to payload for client_id: {self.config.client_id}")
             payload['client_secret'] = self.config.client_secret
         
         revoke_endpoint = f"{self.config.server_url}/realms/{self.config.realm}/protocol/openid-connect/revoke"
@@ -568,12 +586,14 @@ class KeycloakAuth:
     
     def is_token_expired(self) -> bool:
         """Check if current access token is expired"""
+        logger.debug(f"---> Function is_token_expired() called <---")
         if not self.token_expiry:
             return True
         return datetime.now() >= self.token_expiry
     
     def _store_tokens(self, token_data: Dict[str, Any]):
         """Store tokens and calculate expiry"""
+        logger.debug(f"---> Function _store_tokens() called <---")
         self.access_token = token_data.get('access_token')
         self.refresh_token = token_data.get('refresh_token')
         
@@ -584,11 +604,13 @@ class KeycloakAuth:
     
     def get_access_token(self) -> str:
         """Get current access token, refresh if expired"""
+        logger.debug(f"---> Function get_access_token() called <---")
         if self.is_token_expired() and self.refresh_token:
             logger.info("Access token expired, refreshing...")
             self.refresh_access_token()
         
         if not self.access_token:
+            logger.error("No valid access token available")
             raise KeycloakAuthError("No valid access token available")
         
         return self.access_token
@@ -596,15 +618,19 @@ class KeycloakAuth:
 # Convenience functions for quick usage
 def authenticate_user(username: str, password: str, service: str) -> Dict[str, Any]:
         """Quick function to authenticate a user and return access token"""
+        logger.debug(f"---> Quick function authenticate_user() called <---")
         logger.debug(f"Authenticating user {username} for {service} service using quick function")
         config = KeycloakConfig(service=service)
         auth = KeycloakAuth(config)
+        logger.debug(f"---> Calling authenticate_with_password() method on KeycloakAuth instance <---")
         tokens = auth.authenticate_with_password(username, password)
         return tokens
 
 def authenticate_service_account(config: KeycloakConfig = None) -> str:
     """Quick function to authenticate a service account and return access token"""
+    logger.debug(f"---> Quick function authenticate_service_account() called <---")
     auth = KeycloakAuth(config)
+    logger.debug(f"---> Calling authenticate_with_client_credentials() method on KeycloakAuth instance <---")
     tokens = auth.authenticate_with_client_credentials()
     return tokens['access_token']
 
@@ -617,10 +643,16 @@ def verify_token(token: str, service: str, method: str = 'local') -> Dict[str, A
         config: Keycloak configuration
         method: 'local' (default, no special permissions needed) or 'introspect' (requires permissions)
     """
+    logger.debug(f"---> Quick function verify_token() called <---")
+    logger.debug(f"Verifying token for {service} service using method: {method}")
     config = KeycloakConfig(service=service)
     auth = KeycloakAuth(config)
     
     if method == 'local':
+        logger.debug(f"---> Using local verification method <---")
+        logger.debug(f"---> Calling verify_token_locally() method on KeycloakAuth instance <---")
         return auth.verify_token_locally(token)
     else:
+        logger.debug(f"---> Using introspection verification method <---")
+        logger.debug(f"---> Calling introspect_token() method on KeycloakAuth instance <---")
         return auth.introspect_token(token)
