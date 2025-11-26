@@ -1,4 +1,5 @@
 source ../setenv.sh
+source ../commons.sh
 
 # ***** Start Test server
 main()

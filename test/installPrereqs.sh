@@ -14,7 +14,7 @@ installPythonModules()
 # ***** Install custom Windfire Security Python modules
 installCustomPythonModules()
 {
-    pip3 install -e $HOME/dev/windfire-security
+    pip3 install -e $HOME/dev/windfire-security-client
 }
 
 # ***** MAIN EXECUTION

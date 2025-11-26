@@ -1,6 +1,6 @@
-import requests
+import requests # pyright: ignore[reportMissingModuleSource]
 import os
-from colorama import Fore, Style, init
+from colorama import Fore, Style, init # pyright: ignore[reportMissingModuleSource]
 # Import the AuthClient instance from the client package
 from client.authClient import authClient
 
@@ -35,7 +35,7 @@ def test_health_endpoint_testserver():
 
 def test_health_endpoint_authserver():
     print(Style.BRIGHT + Fore.BLUE + "Calling /health endpoint on Auth Server ...")
-    url = httpsAuthServerUrl + "/health"
+    url = httpsAuthServerUrl + "/v1/monitor/health"
     http_headers = {"Content-Type": "application/json"}
     print(Style.BRIGHT + Fore.BLUE + f"Calling {url} ...")
     try:

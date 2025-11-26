@@ -1,10 +1,12 @@
-import os
 import requests # pyright: ignore[reportMissingModuleSource]
 import jwt # pyright: ignore[reportMissingImports]
 import json
 from typing import Dict, Any
 from datetime import datetime, timedelta
+# TODO - START: refactor config
+from config.service_config_reader import serviceConfig
 from config.settings import settings
+# TODO - END: refactor config
 # Initialize logger at the top so it's available everywhere 
 from logger.loggerFactory import logger_factory
 logger = logger_factory.get_logger('keycloakAuth')
@@ -20,11 +22,11 @@ class KeycloakConfig:
         server_url: str = None,
         service: str = None,
     ):    
-        self.server_url = server_url or os.getenv('KEYCLOAK_SERVER_URL')
+        self.server_url = server_url or settings.get('KEYCLOAK_SERVER_URL')
         self.service = service
         servicecfg = None
         if not self.service is None:
-            servicecfg = config.get_service(self.service)
+            servicecfg = serviceConfig.get_service(self.service)
             logger.debug(f"KeycloakConfig: got service config for {self.service}: {servicecfg}")
             self.realm = servicecfg.realm
             self.client_id = servicecfg.client_id
