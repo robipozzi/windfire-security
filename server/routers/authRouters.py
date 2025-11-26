@@ -5,7 +5,7 @@ from keycloakAuth import KeycloakAuthError, authenticate_user, verify_token
 from models.keycloakModels import KeycloakLoginRequest, KeycloakTokenResponse, KeycloakService
 # Initialize logger at the top so it's available everywhere 
 from logger.loggerFactory import logger_factory
-logger = logger_factory.get_logger('calendarRouters')
+logger = logger_factory.get_logger('authRouters')
 
 router = APIRouter(prefix="/security", tags=["Security APIs"])
 

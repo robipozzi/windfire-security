@@ -51,6 +51,7 @@
           - "--exclude=windfire-security-server"
           - "--exclude=__pycache__"
           - "--exclude=.env_PLACEHOLDER"
+          - "--exclude=windfire-security-server.log*"
 
     # Task 4: Copy setenv.sh to remote server
     - name: Copy setenv.sh to "{{ remote_windfire_security_dir }}" directory on remote server
@@ -60,14 +61,23 @@
         owner: "{{ user }}"
         group: "{{ group }}"
         mode: "{{ mode }}"
+    
+    # Task 5: Copy commons.sh to remote server
+    - name: Copy commons.sh to "{{ remote_windfire_security_dir }}" directory on remote server
+      copy:
+        src: "../../commons.sh"
+        dest: "{{ remote_windfire_security_dir }}"
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: "{{ mode }}"
 
-    # Task 5: Create Python virtual environment
+    # Task 6: Create Python virtual environment
     - name: Create Python virtual environment
       command:
         cmd: "{{ python_interpreter }} -m venv {{ venv_path }}"
         creates: "{{ venv_path }}/bin/activate"
 
-    # Task 6: Verify virtualenv installation
+    # Task 7: Verify virtualenv installation
     - name: Verify virtualenv is properly configured
       shell:
         cmd: "source {{ venv_path }}/bin/activate && python --version"
@@ -78,7 +88,7 @@
       debug:
         msg: "Python version in virtualenv: {{ python_version.stdout }}"
     
-    # Task 7: Install required Python modules in virtualenv
+    # Task 8: Install required Python modules in virtualenv
     - name: Install required Python modules in virtualenv by running {{ install_python_modules_script }} install script
       shell: |
         source {{ venv_path }}/bin/activate
@@ -86,7 +96,7 @@
       args:
         executable: /bin/bash
       
-    # Task 8: List installed packages
+    # Task 9: List installed packages
     - name: List installed packages in virtualenv
       shell:
         cmd: "{{ venv_path }}/bin/pip list"

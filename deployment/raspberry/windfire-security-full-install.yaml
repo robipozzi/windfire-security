@@ -39,13 +39,36 @@
     #################################################################
     ##### Windfire Security server component deployment Section #####
     #################################################################
-    # Task 1: Delete Windfire Security directory on remote server
+    # Task 1: Stop Windfire Security service on remote server
+    - name: Get PID for running process "{{ process }}"
+      shell: "pgrep -f {{ process }}"
+      register: app_pid
+      failed_when: app_pid.rc > 1
+    
+    - name: Kill "{{ process }}" process gracefully
+      shell: "kill -TERM {{ item }}"
+      with_items: "{{ app_pid.stdout_lines }}"
+      when: app_pid.rc == 0
+      register: kill_result
+      failed_when:
+        - kill_result.rc != 0
+        - '"No such process" not in kill_result.stderr'
+
+    - name: Wait for "{{ process }}" process graceful termination
+      wait_for:
+        path: "/proc/{{ item }}/status"
+        state: absent
+      with_items: "{{ app_pid.stdout_lines }}"
+      when: app_pid.rc == 0
+      ignore_errors: yes
+
+    # Task 2: Delete Windfire Security directory on remote server
     - name: Remove "{{ remote_windfire_security_dir }}" directory and all its contents on remote server 
       ansible.builtin.file:
         path: "{{ remote_windfire_security_dir }}"
         state: absent
     
-    # Task 2: Create Windfire Security directory on remote server and copy files
+    # Task 3: Create Windfire Security directory on remote server and copy files
     - name: Copy Windfire Security server component to "{{ remote_windfire_security_dir }}" directory on remote server
       ansible.builtin.synchronize:
         src: "../../server"
@@ -54,8 +77,9 @@
           - "--exclude=windfire-security-server"
           - "--exclude=__pycache__"
           - "--exclude=.env_PLACEHOLDER"
+          - "--exclude=windfire-security-server.log*"
 
-    # Task 3: Copy setenv.sh to remote server
+    # Task 4: Copy setenv.sh to remote server
     - name: Copy setenv.sh to "{{ remote_windfire_security_dir }}" directory on remote server
       copy:
         src: "../../setenv.sh"
@@ -63,14 +87,23 @@
         owner: "{{ user }}"
         group: "{{ group }}"
         mode: "{{ mode }}"
+    
+    # Task 5: Copy commons.sh to remote server
+    - name: Copy commons.sh to "{{ remote_windfire_security_dir }}" directory on remote server
+      copy:
+        src: "../../commons.sh"
+        dest: "{{ remote_windfire_security_dir }}"
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: "{{ mode }}"
 
-    # Task 4: Create Python virtual environment
+    # Task 6: Create Python virtual environment
     - name: Create Python virtual environment
       command:
         cmd: "{{ python_interpreter }} -m venv {{ venv_path }}"
         creates: "{{ venv_path }}/bin/activate"
 
-    # Task 5: Verify virtualenv installation
+    # Task 7: Verify virtualenv installation
     - name: Verify virtualenv is properly configured
       shell:
         cmd: "source {{ venv_path }}/bin/activate && python --version"
@@ -81,7 +114,7 @@
       debug:
         msg: "Python version in virtualenv: {{ python_version.stdout }}"
     
-    # Task 6: Install required Python modules in virtualenv
+    # Task 8: Install required Python modules in virtualenv
     - name: Install required Python modules in virtualenv by running {{ install_python_modules_script }} install script
       shell: |
         source {{ venv_path }}/bin/activate
@@ -89,7 +122,7 @@
       args:
         executable: /bin/bash
       
-    # Task 7: List installed packages
+    # Task 9: List installed packages
     - name: List installed packages in virtualenv
       shell:
         cmd: "{{ venv_path }}/bin/pip list"

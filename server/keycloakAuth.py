@@ -82,6 +82,7 @@ class KeycloakAuth:
         Raises:
             KeycloakAuthError: If authentication fails
         """
+        logger.debug(f"Method authenticate_with_password() called")
         logger.info(f"Authenticating user: {username}")
         
         payload = {
@@ -95,6 +96,9 @@ class KeycloakAuth:
             payload['client_secret'] = self.config.client_secret
         
         try:
+            logger.info(f"self.config.token_endpoint: {self.config.token_endpoint}")
+            #logger.debug(f"Payload: {payload}")
+
             response = self.session.post(
                 self.config.token_endpoint,
                 data=payload,
