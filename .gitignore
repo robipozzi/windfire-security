@@ -20,4 +20,3 @@ server/config/service_config.json
 test/windfire-security-test/
 test/*/__pycache__/
 test/__pycache__/
-server/config/service_config.json
