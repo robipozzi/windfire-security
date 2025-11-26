@@ -17,4 +17,4 @@ installPythonModules()
 # ***** MAIN EXECUTION
 echo "Installing Python prerequisites..."
 installPythonModules
-echo ${grn}"Python prerequisites installation complete."${end}
+echo -e "${GREEN}Python prerequisites installation complete.${RESET}"

@@ -1,14 +1,17 @@
+source ../setenv.sh
+
 ###### Function section - START
 printSelectEnvironment()
 {
     ENVIRONMENT_SELECTION=$1
     if [[ -n "${ENVIRONMENT_SELECTION}" ]]; then
         echo 
+        return
     else
-        echo ${blu}Select environment : ${end}
-        echo "${blu}1. Development${end}"
-        echo "${blu}2. Test${end}"
-        echo "${blu}3. Production${end}"
+        echo -e "${BLU}Select environment :${RESET}"
+        echo -e "${BLU}1. Development${RESET}"
+        echo -e "${BLU}2. Test${RESET}"
+        echo -e "${BLU}3. Production${RESET}"
         read ENVIRONMENT_SELECTION
     fi
 	setEnvironment
@@ -19,11 +22,11 @@ setEnvironment()
 	case $ENVIRONMENT_SELECTION in
 		1)  ENVIRONMENT=dev
 			;;
-		2)  ENVIRONMENT=test
+		2)  ENVIRONMENT=staging
 			;;
         3)  ENVIRONMENT=prod
             ;;
-		*) 	printf "\n${red}No valid option selected${end}\n"
+		*) 	printf "\n${RED}No valid option selected${RESET}\n"
 			printSelectEnvironment
 			;;
 	esac

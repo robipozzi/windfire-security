@@ -1,1 +1,1 @@
-./start-auth-server.sh 3 > windfire-security-server.log 2>&1 &
+./start-auth-server.sh -e prod "$@" > windfire-security-server.log 2>&1 &
