@@ -15,7 +15,7 @@ main()
 
     # Activate the virtual environment
     echo -e "${BLU}PYTORCH_SERVER_VIRTUAL_ENV${RESET} is set to ${BLU}$PYTORCH_SERVER_VIRTUAL_ENV${RESET}, proceeding to activate ..."
-    echo Activating Python Virtual Environment with command ${BLU}source $PYTORCH_SERVER_VIRTUAL_ENV/bin/activate${RESET}...
+    echo -e "Activating Python Virtual Environment with command ${BLU}source $PYTORCH_SERVER_VIRTUAL_ENV/bin/activate${RESET}..."
     source "$PYTORCH_SERVER_VIRTUAL_ENV/bin/activate"
     echo -e "${GREEN}Python Virtual Environment activated${RESET}"
     echo 
