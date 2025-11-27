@@ -25,7 +25,7 @@ async def keycloak_login(login_request: KeycloakLoginRequest):
     Returns:
         Access token and refresh token
     """
-    logger.debug(f"====> /auth endpoint called for service: {login_request.service} <====")
+    logger.info(f"====> /auth endpoint called for service: {login_request.service} <====")
     logger.debug(f"---> Function keycloak_login() called <---")
     logger.info(f"Keycloak login attempt for user {login_request.username} for service {login_request.service}")
     try:
