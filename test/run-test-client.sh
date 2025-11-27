@@ -1,25 +1,45 @@
+#!/bin/bash
+
+# ***** Run test client
+
 source ../setenv.sh
 source ../commons.sh
 
-# ***** Run test client
+# ===== DEFAULT VALUES =====
+ENVIRONMENT="prod"
+
+# ===== MAIN FUNCTION =====
 main()
 {
-    echo ${blu}"###############################################"${end}
-    echo ${blu}"############### Test client run ###############"${end}
-    echo ${blu}"###############################################"${end}
-    echo This script will run the following steps:
-    echo    1. Create a Python Virtual Environment, if does not exist
-    echo    2. Activate the Python Virtual Environment
-    echo    3. Install Python prerequisites, if not already installed
-    echo    4. Run test client
-    echo 
+    # Parse command-line arguments
+    parse_args "$@"
+    
+    # Validate arguments
+    validate_environment
+    
+    # Display header
+    echo -e "${BOLD}${BLU}###################################################################${RESET}"
+    echo -e "${BOLD}${BLU}############### Windfire Security - Test client run ###############${RESET}"
+    echo -e "${BOLD}${BLU}###################################################################${RESET}"
+    echo
+
+    # Create and activate virtual environment
     source ./createPythonVenv.sh
+    
     run
 }
 
+# ===== TEST CLIENT RUN FUNCTION =====
 run()
 {
     getCredentials
+
+    # Show configuration
+    display_config
+
+    echo -e "${YELLOW}Running test authenticating to Windfire Security server in environment: $ENVIRONMENT${RESET}"
+
+    ENVIRONMENT=$ENVIRONMENT \
     USERNAME=$USERNAME \
     PASSWORD=$PASSWORD \
     SERVICE=$AUTH_SERVICE_TEST \
@@ -27,5 +47,103 @@ run()
     python3 testClient.py
 }
 
-# ***** MAIN EXECUTION
-main
+# ===== ARGUMENT PARSING FUNCTION =====
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -e|--environment)
+                ENVIRONMENT="$2"
+                shift 2
+                ;;
+            -h|--help)
+                print_help
+                exit 0
+                ;;
+            *)
+                echo -e "${RED}Error: Unknown option '$1'${RESET}"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+        esac
+    done
+}
+
+# ===== VALIDATION FUNCTION =====
+validate_environment() {
+    if [ -z "${ENVIRONMENT}" ]; then
+        echo -e "${YELLOW}ENVIRONMENT is not set or is empty.${RESET}"
+        return
+    fi
+
+    case "$ENVIRONMENT" in
+        dev|staging|prod)
+            return 0
+            ;;
+        *)
+            echo -e "${RED}Error: Invalid environment '$ENVIRONMENT'${RESET}"
+            echo "Valid options: dev, staging, prod"
+            exit 1
+            ;;
+    esac
+}
+
+# ===== CONFIGURATION DISPLAY FUNCTION =====
+display_config() {
+    echo -e "${BOLD}${GREEN}Configuration Summary:${RESET}"
+    echo -e "  Environment:    ${YELLOW}$ENVIRONMENT${RESET}"
+    echo
+}
+
+# ===== HELP FUNCTION =====
+print_help() {
+    # Display help information
+    echo -e "${BOLD}==========================================${RESET}"
+    echo -e "${BOLD}Windfire Security - Test client run${RESET}"
+    echo -e "${BOLD}==========================================${RESET}"
+    echo
+    
+    echo -e "${BOLD}DESCRIPTION:${RESET}"
+    echo -e "    This script runs a test for Windfire Security Authentication services"
+    echo -e "    1. Authenticates to the Windfire Security server and gets a token"
+    echo -e "    2. Calls a protected API on a Test Server using the token"
+    echo
+    echo -e "    Service with Python virtual environment management, running the following steps:"
+    echo -e "    1. Create a Python Virtual Environment, if does not exist"
+    echo -e "    2. Activate the Python Virtual Environment"
+    echo -e "    3. Install Python prerequisites, if not already installed"
+    echo -e "    4. Run test client"
+    echo 
+    echo -e "${BOLD}USAGE:${RESET}"
+    echo -e "    ./run-test-client.sh [OPTIONS]"
+    echo
+    echo -e "${BOLD}OPTIONS:${RESET}"
+    echo -e "    -e, --environment ENV      Set environment for Windfire Security server to authenticate "
+    echo -e "                               Available environment: dev, staging, prod"
+    echo -e "                               Default: prod"
+    echo
+    echo -e "    -h, --help                 Display this help message and exit"
+    echo
+    echo -e "${BOLD}EXAMPLES:${RESET}"
+    echo -e "    # Run with default settings (prod environment, Windfire Security server on https://raspberry01:8443)"
+    echo -e "    ./run-test-client.sh"
+    echo
+    echo -e "    # Run and authenticate to Windfire Security development environment"
+    echo -e "    ./run-test-client.sh -e dev"
+    echo
+    echo -e "${BOLD}STARTUP STEPS:${RESET}"
+    echo -e "    This script will run the following steps:"
+    echo -e "    1. Create a Python Virtual Environment, if does not exist"
+    echo -e "    2. Activate the Python Virtual Environment"
+    echo -e "    3. Install Python prerequisites, if not already installed"
+    echo -e "    4. Run test client"
+    echo 
+    echo -e "${BOLD}TROUBLESHOOTING:${RESET}"
+    echo -e "    • Port already in use: Use -p to specify a different port"
+    echo -e "    • Permission denied: Run 'chmod +x start-auth-server.sh'"
+    echo -e "    • Module not found: Ensure createPythonVenv.sh is in the current directory"
+    echo
+    echo -e "${BOLD}========================================================${RESET}"
+}
+
+# ===== EXECUTION =====
+main "$@"

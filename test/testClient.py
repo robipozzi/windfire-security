@@ -10,11 +10,20 @@ username = os.getenv("USERNAME")
 password = os.getenv("PASSWORD")
 service = os.getenv("SERVICE")
 verify_ssl = os.getenv("VERIFY_SSL_CERTS").lower() == "true"
-httpsAuthServerUrl = os.getenv("HTTPS_AUTH_SERVER_URL", "https://raspberry01:8443")
-testServerUrl = os.getenv("TEST_SERVER_URL", "http://localhost:8001")
+environment = os.getenv("ENVIRONMENT")
+print(Style.BRIGHT + Fore.BLUE + f"Environment for Windfire Security server is: {environment}")
+if environment in ("dev", "staging"):
+    httpsAuthServerUrl = "https://localhost:8443"
+elif environment == "prod":
+    httpsAuthServerUrl = "https://raspberry01:8443"
+print(Style.BRIGHT + Fore.BLUE + f"Windfire Security server url is: {httpsAuthServerUrl}")
+#httpsAuthServerUrl = os.getenv("HTTPS_AUTH_SERVER_URL", "https://raspberry01:8443")
+testServerUrl = "http://localhost:8001"
+print(Style.BRIGHT + Fore.BLUE + f"Test server url is: {testServerUrl}")
 
 def test_health_endpoint_testserver():
     print(Style.BRIGHT + Fore.BLUE + "Calling /health endpoint on Test Server ...")
+    print(Style.BRIGHT + Fore.BLUE + "---> Function test_health_endpoint_testserver() called <---")
     url = testServerUrl + "/health"
     http_headers = {"Content-Type": "application/json"}
     print(Style.BRIGHT + Fore.BLUE + f"Calling {url} ...")
@@ -35,6 +44,7 @@ def test_health_endpoint_testserver():
 
 def test_health_endpoint_authserver():
     print(Style.BRIGHT + Fore.BLUE + "Calling /health endpoint on Auth Server ...")
+    print(Style.BRIGHT + Fore.BLUE + "---> Function test_health_endpoint_authserver() called <---")
     url = httpsAuthServerUrl + "/v1/monitor/health"
     http_headers = {"Content-Type": "application/json"}
     print(Style.BRIGHT + Fore.BLUE + f"Calling {url} ...")
@@ -54,6 +64,7 @@ def test_health_endpoint_authserver():
         print(Style.BRIGHT + Fore.LIGHTRED_EX + f"Request error: {e}")
 
 def authenticate():
+    print(Style.BRIGHT + Fore.BLUE + "---> Function authenticate() called <---")
     print(Style.BRIGHT + Fore.BLUE + "Delegating authentication to authClient module ...")
     try:
         print(Style.BRIGHT + Fore.BLUE + "Calling client.authClient.authenticate() ...")
@@ -68,6 +79,7 @@ def authenticate():
     return access_token
 
 def test_secure_endpoint():
+    print(Style.BRIGHT + Fore.BLUE + "---> Function test_secure_endpoint() called <---")
     print(Style.BRIGHT + Fore.BLUE + "Call /test secure endpoint on Test Server ...")
     # ****** START - Uncomment for debug purposes in development ONLY *******
     #print(f"Access Token: {token}\n")

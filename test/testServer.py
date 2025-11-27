@@ -1,8 +1,8 @@
-import uvicorn
+import uvicorn # pyright: ignore[reportMissingImports]
 import os
-from fastapi import FastAPI, HTTPException, Depends, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from colorama import Fore, Style, init
+from fastapi import FastAPI, HTTPException, Depends, status, Request # pyright: ignore[reportMissingImports]
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials # pyright: ignore[reportMissingImports]
+from colorama import Fore, Style, init # pyright: ignore[reportMissingModuleSource]
 from contextlib import asynccontextmanager
 # Import the AuthClient instance from the client package
 from client.authClient import authClient
@@ -27,7 +27,7 @@ async def lifespan(app):
 # Initialize FastAPI app
 app = FastAPI(
     title=SERVICE_NAME,
-    description="A secured REST API for security service operations",
+    description="A Test server to test secured REST API for security service operations",
     version="1.0.0",
     lifespan=lifespan,
     redirect_slashes=False
