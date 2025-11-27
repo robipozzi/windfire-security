@@ -11,15 +11,11 @@ password = os.getenv("PASSWORD")
 service = os.getenv("SERVICE")
 verify_ssl = os.getenv("VERIFY_SSL_CERTS").lower() == "true"
 environment = os.getenv("ENVIRONMENT")
-print(Style.BRIGHT + Fore.BLUE + f"Environment for Windfire Security server is: {environment}")
 if environment in ("dev", "staging"):
     httpsAuthServerUrl = "https://localhost:8443"
 elif environment == "prod":
     httpsAuthServerUrl = "https://raspberry01:8443"
-print(Style.BRIGHT + Fore.BLUE + f"Windfire Security server url is: {httpsAuthServerUrl}")
-#httpsAuthServerUrl = os.getenv("HTTPS_AUTH_SERVER_URL", "https://raspberry01:8443")
 testServerUrl = "http://localhost:8001"
-print(Style.BRIGHT + Fore.BLUE + f"Test server url is: {testServerUrl}")
 
 def test_health_endpoint_testserver():
     print(Style.BRIGHT + Fore.BLUE + "Calling /health endpoint on Test Server ...")
@@ -118,6 +114,9 @@ def main():
     print(Style.BRIGHT + Fore.GREEN +"######################################################################")
     print(Style.BRIGHT + Fore.GREEN +"##### Testing Windfire Security Authentication Service Endpoints #####")
     print(Style.BRIGHT + Fore.GREEN +"######################################################################")
+    print(Style.BRIGHT + Fore.BLUE + f"Environment for Windfire Security server is: {environment}")
+    print(Style.BRIGHT + Fore.BLUE + f"Windfire Security server url is: {httpsAuthServerUrl}")
+    print(Style.BRIGHT + Fore.BLUE + f"Test server url is: {testServerUrl}")
     print("")
     print(Style.BRIGHT + Fore.CYAN +"#####################################################################################")
     print(Style.BRIGHT + Fore.CYAN +"##### Test Health endpoint on Test Server (NOT AUTHENTICATED & NO SSL ENFORCED) #####")
