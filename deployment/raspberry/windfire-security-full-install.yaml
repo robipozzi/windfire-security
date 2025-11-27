@@ -76,6 +76,7 @@
         rsync_opts:
           - "--exclude=windfire-security-server"
           - "--exclude=__pycache__"
+          - "--exclude=config/service_config.json_PLACEHOLDER"
           - "--exclude=.env_PLACEHOLDER"
           - "--exclude=windfire-security-server.log*"
 

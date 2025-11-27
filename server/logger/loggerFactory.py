@@ -48,7 +48,7 @@ class LoggerFactory:
         """Ensure logging is configured and return a logger."""
         self.logger = logging.getLogger(logger_name)
         file_handler = TimedRotatingFileHandler(
-            os.getenv("DEFAULT_LOG_FILE", "windfire-security-server.log"), 
+            os.getenv("DEFAULT_LOG_FILE", "logs/windfire-security-server.log"), 
             when=os.getenv("DEFAULT_LOG_ROTATION_WHEN", "midnight"), 
             interval=1 / 86400, 
             backupCount=7
