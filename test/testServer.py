@@ -41,7 +41,7 @@ async def test_endpoint(
 ):
     """
     A test endpoint to verify server is running and a valid bearer token is provided.
-    Token is validated by calling the /verify endpoint on https://localhost:8443
+    Token is validated by calling the /verify endpoint on Windfire Security Server
     """
     print(f"====> /test endpoint called <====")
 
