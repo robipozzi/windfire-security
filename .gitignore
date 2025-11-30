@@ -17,6 +17,7 @@ server/tls/windfire-security-cert.pem
 server/tls/windfire-security-key.pem
 server/windfire-security-server.log*
 server/logs/windfire-security-server.log*
+server/config/service_config.json
 test/windfire-security-test/
 test/*/__pycache__/
 test/__pycache__/
