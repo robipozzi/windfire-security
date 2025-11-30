@@ -3,7 +3,7 @@
     "windfire-calendar-srv": {
       "realm": "windfire",
       "client_id": "windfire-calendar",
-      "client_secret": "<PUT_CLIENT_SECRET_HERE>"
+      "client_secret": "<PUT_YOUR_CLIENT_SECRET>"
     }
   }
 }

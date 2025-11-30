@@ -3,22 +3,20 @@ source ../setenv.sh
 # ***** Activate Python Virtual environment
 main()
 {
-    echo ${blu}"###########################################################"${end}
-    echo ${blu}"########## Python Virtual Environment activation ##########"${end}
-    echo ${blu}"###########################################################"${end}
+    echo -e "${BLU}###########################################################${RESET}"
+    echo -e "${BLU}########## Python Virtual Environment activation ##########${RESET}"
+    echo -e "${BLU}###########################################################${RESET}"
     # Ensure the environment variable is set
     if [ -z "$PYTORCH_TEST_VIRTUAL_ENV" ]; then
-        echo "${mag}PYTORCH_TEST_VIRTUAL_ENV${end} is not set"
+        echo -e "${MAGENTA}PYTORCH_TEST_VIRTUAL_ENV${RESET} is not set"
         exit 1
     fi
 
     # Activate the virtual environment
-    echo "${blu}PYTORCH_TEST_VIRTUAL_ENV${end} is set to ${blu}$PYTORCH_TEST_VIRTUAL_ENV${end}, proceeding to activate ..."
-    echo Activating Python Virtual Environment with command ${blu}source $PYTORCH_TEST_VIRTUAL_ENV/bin/activate${end}...
+    echo -e "${BLU}PYTORCH_TEST_VIRTUAL_ENV${RESET} is set to ${BLU}$PYTORCH_TEST_VIRTUAL_ENV${RESET}, proceeding to activate ..."
+    echo -e "Activating Python Virtual Environment with command ${BLU}source $PYTORCH_TEST_VIRTUAL_ENV/bin/activate${RESET}..."
     source "$PYTORCH_TEST_VIRTUAL_ENV/bin/activate"
-    echo ${grn}Python Virtual Environment activated${end}
-    echo 
-    source ./installPrereqs.sh
+    echo -e "${GREEN}Python Virtual Environment activated${RESET}"
 }
 
 # ***** MAIN EXECUTION

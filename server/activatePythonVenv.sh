@@ -18,8 +18,6 @@ main()
     echo -e "Activating Python Virtual Environment with command ${BLU}source $PYTORCH_SERVER_VIRTUAL_ENV/bin/activate${RESET}..."
     source "$PYTORCH_SERVER_VIRTUAL_ENV/bin/activate"
     echo -e "${GREEN}Python Virtual Environment activated${RESET}"
-    echo 
-    source ./installPrereqs.sh
 }
 
 # ***** MAIN EXECUTION

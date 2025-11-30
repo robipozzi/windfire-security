@@ -4,9 +4,9 @@ source ../setenv.sh
 main()
 {
     # Check if the directory exists
-    echo Check if Python virtual environment ${BLU}$PYTORCH_SERVER_VIRTUAL_ENV${RESET} exists
+    echo -e "Check if Python virtual environment ${BLU}$PYTORCH_SERVER_VIRTUAL_ENV${RESET} exists"
     if [ -d "$PYTORCH_SERVER_VIRTUAL_ENV" ]; then
-        echo -e "Python virtual environment ${BLU}$PYTORCH_SERVER_VIRTUAL_ENV${RESET} exists, deactivating ..."
+        echo - "Python virtual environment ${BLU}$PYTORCH_SERVER_VIRTUAL_ENV${RESET} exists, deactivating ..."
         deactivate
     else
         echo -e "Python virtual environment ${BLU}$PYTORCH_SERVER_VIRTUAL_ENV${RESET} does not exist"

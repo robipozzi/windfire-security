@@ -19,6 +19,8 @@ main()
         create
         echo
         activate
+        echo
+        installPrereqs
     fi
 }
 
@@ -32,6 +34,11 @@ create()
 activate()
 {
     source ./activatePythonVenv.sh
+}
+
+installPrereqs()
+{
+    source ./installPrereqs.sh
 }
 
 # ***** MAIN EXECUTION
