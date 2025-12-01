@@ -18,3 +18,4 @@ installPythonModules()
 echo "Installing Python prerequisites..."
 installPythonModules
 echo -e "${GREEN}Python prerequisites installation complete.${RESET}"
+echo
