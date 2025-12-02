@@ -22,9 +22,10 @@ elif environment == "prod":
 testServerUrl = f"http://localhost:{port}"
 
 def test_health_endpoint_testserver():
-    print(Style.BRIGHT + Fore.BLUE + "Calling /health endpoint on Test Server ...")
+    apiEndpoint = "/health"
+    print(Style.BRIGHT + Fore.BLUE + f"Calling {apiEndpoint} endpoint on Test Server ...")
     print(Style.BRIGHT + Fore.BLUE + "---> Function test_health_endpoint_testserver() called <---")
-    url = testServerUrl + "/health"
+    url = testServerUrl + apiEndpoint
     http_headers = {"Content-Type": "application/json"}
     print(Style.BRIGHT + Fore.BLUE + f"Calling {url} ...")
     try:
@@ -43,9 +44,10 @@ def test_health_endpoint_testserver():
         print(Style.BRIGHT + Fore.LIGHTRED_EX + f"Request error: {e}")
 
 def test_health_endpoint_authserver():
-    print(Style.BRIGHT + Fore.BLUE + "Calling /health endpoint on Auth Server ...")
+    apiEndpoint = "/v1/monitor/health"
+    print(Style.BRIGHT + Fore.BLUE + f"Calling {apiEndpoint} endpoint on Auth Server ...")
     print(Style.BRIGHT + Fore.BLUE + "---> Function test_health_endpoint_authserver() called <---")
-    url = httpsAuthServerUrl + "/v1/monitor/health"
+    url = httpsAuthServerUrl + apiEndpoint
     http_headers = {"Content-Type": "application/json"}
     print(Style.BRIGHT + Fore.BLUE + f"Calling {url} ...")
     try:
@@ -79,8 +81,9 @@ def authenticate():
     return access_token
 
 def test_secure_endpoint():
+    apiEndpoint = "/test"
+    print(Style.BRIGHT + Fore.BLUE + f"Call {apiEndpoint} secure endpoint on Test Server ...")
     print(Style.BRIGHT + Fore.BLUE + "---> Function test_secure_endpoint() called <---")
-    print(Style.BRIGHT + Fore.BLUE + "Call /test secure endpoint on Test Server ...")
     # ****** START - Uncomment for debug purposes in development ONLY *******
     #print(f"Access Token: {token}\n")
     # ****** END - Uncomment for debug purposes in development ONLY ********
@@ -89,7 +92,7 @@ def test_secure_endpoint():
         print(Style.BRIGHT + Fore.LIGHTRED_EX + "No access token available. Authenticate first.")
         return
 
-    url = testServerUrl + "/test"
+    url = testServerUrl + apiEndpoint
     payload = {f"service": service}
     http_headers = {
         "Content-Type": "application/json",

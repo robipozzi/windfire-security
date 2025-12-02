@@ -62,6 +62,7 @@ start()
 
 # ===== ARGUMENT PARSING FUNCTION =====
 parse_args() {
+    echo "Parsing arguments..."
     while [[ $# -gt 0 ]]; do
         case $1 in
             -e|--environment)
