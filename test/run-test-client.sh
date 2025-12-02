@@ -12,18 +12,18 @@ DEFAULT_PORT=8001
 # ===== MAIN FUNCTION =====
 main()
 {
-    # Parse command-line arguments
-    parse_args "$@"
-    
-    # Validate arguments
-    validate_environment
-    
     # Display header
     echo -e "${BOLD}${BLU}###################################################################${RESET}"
     echo -e "${BOLD}${BLU}############### Windfire Security - Test client run ###############${RESET}"
     echo -e "${BOLD}${BLU}###################################################################${RESET}"
     echo
 
+    # Parse command-line arguments
+    parse_args "$@"
+    
+    # Validate arguments
+    validate_environment
+    
     # Create and activate virtual environment
     source ./createPythonVenv.sh
     
