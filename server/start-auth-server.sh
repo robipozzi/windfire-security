@@ -10,14 +10,14 @@ LOG_LEVEL="INFO"
 
 # ===== MAIN FUNCTION =====
 main() {
-    # Parse command-line arguments
-    parse_args "$@"
-    
     # Display header
     echo -e "${BOLD}${BLU}#################################################################${RESET}"
     echo -e "${BOLD}${BLU}############### Windfire Security Service Startup ###############${RESET}"
     echo -e "${BOLD}${BLU}#################################################################${RESET}"
     echo
+    
+    # Parse command-line arguments
+    parse_args "$@"
     
     # Create and activate virtual environment
     source ./createPythonVenv.sh
