@@ -1,7 +1,8 @@
 source ../setenv.sh
-source ../commons.sh
 
 # ***** Activate Python Virtual environment
+
+# ===== MAIN FUNCTION =====
 main()
 {
     echo -e "${BLU}###########################################################${RESET}"
@@ -21,5 +22,5 @@ main()
     echo
 }
 
-# ***** MAIN EXECUTION
+# ===== EXECUTION =====
 main
