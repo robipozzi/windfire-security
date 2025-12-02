@@ -25,7 +25,7 @@ async def keycloak_login(login_request: KeycloakLoginRequest):
     Returns:
         Access token and refresh token
     """
-    logger.info(f"====> /auth endpoint called for service: {login_request.service} <====")
+    logger.info(f"====> /v1/security/auth endpoint called for service: {login_request.service} <====")
     logger.debug(f"---> Function keycloak_login() called <---")
     logger.info(f"Keycloak login attempt for user {login_request.username} for service {login_request.service}")
     try:
@@ -65,7 +65,7 @@ async def keycloak_login(login_request: KeycloakLoginRequest):
 async def verify(tokenValidate: KeycloakService, credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         service = tokenValidate.service
-        logger.debug(f"====> /verify endpoint called for service: {tokenValidate.service} <====")
+        logger.info(f"====> /v1/security/verify endpoint called for service: {tokenValidate.service} <====")
         logger.debug(f"---> Function verify() called <---")
         logger.debug(f"---> Calling keycloakAuth verify_token() function <---")
         token_claims = verify_token(credentials.credentials, service=service, method='local')

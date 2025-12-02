@@ -13,5 +13,5 @@ async def health_check():
     """
     Health check endpoint
     """
-    logger.info("====> /health endpoint called <====")
+    logger.info("====> /v1/monitor/health endpoint called <====")
     return {"status": "healthy", "service": SERVICE_NAME}
