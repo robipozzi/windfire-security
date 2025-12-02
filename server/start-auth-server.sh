@@ -6,16 +6,12 @@ source ../setenv.sh
 source ../commons.sh
 
 # ===== DEFAULT VALUES =====
-ENVIRONMENT=""
 LOG_LEVEL="INFO"
 
 # ===== MAIN FUNCTION =====
 main() {
     # Parse command-line arguments
     parse_args "$@"
-    
-    # Validate arguments
-    validate_environment
     
     # Display header
     echo -e "${BOLD}${BLU}#################################################################${RESET}"
@@ -32,18 +28,16 @@ main() {
 
 # ===== SERVER RUN FUNCTION =====
 run_server() {
-    printSelectEnvironment "$ENVIRONMENT"
-
     # Show configuration
     display_config
 
-    echo -e "${YELLOW}Running authentication server in environment: $ENVIRONMENT${RESET}"
+    echo -e "${YELLOW}Running authentication server${RESET}"
     
     # Build Python command with optional flags
     local python_cmd="python3 authServer.py --port $PORT"
 
     if [ -z "${PORT}" ]; then
-        echo -e "${YELLOW}PORT is not set or is empty.${RESET}"
+        echo -e "${YELLOW}PORT is not set or is empty, running with default.${RESET}"
         python_cmd="python3 authServer.py"
     fi
 
@@ -51,19 +45,15 @@ run_server() {
         LOG_LEVEL="DEBUG"
     fi
     
-    echo -e "${YELLOW}Starting server with: ENVIRONMENT="$ENVIRONMENT" LOG_LEVEL="$LOG_LEVEL" $python_cmd${RESET}"
-    # Set environment, log level and run
-    ENVIRONMENT="$ENVIRONMENT" LOG_LEVEL="$LOG_LEVEL" eval "$python_cmd"
+    # Set log level and run
+    echo -e "${YELLOW}Starting server with: LOG_LEVEL="$LOG_LEVEL" $python_cmd${RESET}"
+    LOG_LEVEL="$LOG_LEVEL" eval "$python_cmd"
 }
 
 # ===== ARGUMENT PARSING FUNCTION =====
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
-            -e|--environment)
-                ENVIRONMENT="$2"
-                shift 2
-                ;;
             -p|--port)
                 PORT="$2"
                 shift 2
@@ -85,7 +75,7 @@ parse_args() {
     done
 }
 
-# ===== VALIDATION FUNCTION =====
+# ===== VALIDATION FUNCTION (### NOT USED ###) =====
 validate_environment() {
     if [ -z "${ENVIRONMENT}" ]; then
         echo -e "${YELLOW}ENVIRONMENT is not set or is empty.${RESET}"
@@ -107,7 +97,6 @@ validate_environment() {
 # ===== CONFIGURATION DISPLAY FUNCTION =====
 display_config() {
     echo -e "${BOLD}${GREEN}Configuration Summary:${RESET}"
-    echo -e "  Environment:    ${YELLOW}$ENVIRONMENT${RESET}"
     echo -e "  Port:           ${YELLOW}$PORT${RESET}"
     echo -e "  Verbose:        ${YELLOW}$([ "$VERBOSE" = true ] && echo 'Enabled' || echo 'Disabled')${RESET}"
     echo
@@ -133,11 +122,8 @@ print_help() {
     echo -e "    ./start-auth-server.sh [OPTIONS]"
     echo
     echo -e "${BOLD}OPTIONS:${RESET}"
-    echo -e "    -e, --environment ENV      Set environment (dev, staging, prod)"
-    echo -e "                               Default: dev"
-    echo
     echo -e "    -p, --port PORT            Specify server port (1-65535)"
-    echo -e "                               Default: 8000"
+    echo -e "                               Default: 8000 (for HTTP) / 8443 (for HTTPS)"
     echo
     echo -e "    -v, --verbose              Enable debug logging"
     echo -e "                               Default: disabled"
@@ -145,17 +131,14 @@ print_help() {
     echo -e "    -h, --help                 Display this help message and exit"
     echo
     echo -e "${BOLD}EXAMPLES:${RESET}"
-    echo -e "    # Run with default settings (dev environment, localhost:8000)"
+    echo -e "    # Run with default settings"
     echo -e "    ./start-auth-server.sh"
     echo
-    echo -e "    # Run in production environment on custom port"
-    echo -e "    ./start-auth-server.sh -e prod -p 9000"
+    echo -e "    # Run on custom port"
+    echo -e "    ./start-auth-server.sh -p 9000"
     echo
     echo -e "    # Run with verbose logging for debug purposes"
     echo -e "    ./start-auth-server.sh -v"
-    echo
-    echo -e "    # Run in staging with multiple options"
-    echo -e "    ./start-auth-server.sh --environment staging --port 8001 --verbose"
     echo
     echo -e "${BOLD}STARTUP STEPS:${RESET}"
     echo -e "    1. Create a Python Virtual Environment (if it doesn't exist)"
