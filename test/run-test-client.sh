@@ -135,7 +135,7 @@ print_help() {
     echo -e "    ./run-test-client.sh [OPTIONS]"
     echo
     echo -e "${BOLD}OPTIONS:${RESET}"
-    echo -e "    -e, --environment ENV      Set environment for Windfire Security server to authenticate "
+    echo -e "    -e, --environment ENV      Set environment for Windfire Security server to authenticate and validate"
     echo -e "                               Available environment: dev, staging, prod"
     echo -e "                               Default: prod"
     echo

@@ -6,6 +6,7 @@ source ../setenv.sh
 source ../commons.sh
 
 # ===== DEFAULT VALUES =====
+ENVIRONMENT="prod"
 DEFAULT_PORT=8001
 
 # ===== MAIN FUNCTION =====
@@ -13,6 +14,9 @@ main()
 {
     # Parse command-line arguments
     parse_args "$@"
+
+    # Validate arguments
+    validate_environment
     
     # Display header
     echo -e "${BLU}#######################################################################${RESET}"
@@ -23,10 +27,11 @@ main()
     # Create and activate virtual environment
     source ./createPythonVenv.sh
 
-    run
+    start
 }
 
-run()
+# ===== TEST SERVER START FUNCTION =====
+start()
 {
     getCredentials
 
@@ -44,8 +49,9 @@ run()
     display_config
 
     # Start Test server
-    echo -e "${YELLOW}Starting server with: USERNAME=$USERNAME PASSWORD={***} SERVICE=$AUTH_SERVICE_TEST VERIFY_SSL_CERTS=$VERIFY_SSL_CERTS PORT=$PORT $python_cmd${RESET}"
+    echo -e "${YELLOW}Starting server with: ENVIRONMENT=$ENVIRONMENT USERNAME=$USERNAME PASSWORD={***} SERVICE=$AUTH_SERVICE_TEST VERIFY_SSL_CERTS=$VERIFY_SSL_CERTS PORT=$PORT $python_cmd${RESET}"
     
+    ENVIRONMENT=$ENVIRONMENT \
     USERNAME=$USERNAME \
     PASSWORD=$PASSWORD \
     SERVICE=$AUTH_SERVICE_TEST \
@@ -58,6 +64,10 @@ run()
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
+            -e|--environment)
+                ENVIRONMENT="$2"
+                shift 2
+                ;;
             -p|--port)
                 PORT="$2"
                 shift 2
@@ -75,7 +85,7 @@ parse_args() {
     done
 }
 
-# ===== VALIDATION FUNCTION (### NOT USED ###) =====
+# ===== VALIDATION FUNCTION =====
 validate_environment() {
     if [ -z "${ENVIRONMENT}" ]; then
         echo -e "${YELLOW}ENVIRONMENT is not set or is empty.${RESET}"
@@ -97,6 +107,7 @@ validate_environment() {
 # ===== CONFIGURATION DISPLAY FUNCTION =====
 display_config() {
     echo -e "${BOLD}${GREEN}Configuration Summary:${RESET}"
+    echo -e "  Environment:    ${YELLOW}$ENVIRONMENT${RESET}"
     echo -e "  Port:           ${YELLOW}$PORT${RESET}"
     echo
 }
@@ -123,6 +134,10 @@ print_help() {
     echo -e "    ./start-test-server.sh [OPTIONS]"
     echo
     echo -e "${BOLD}OPTIONS:${RESET}"
+    echo -e "    -e, --environment ENV      Set environment for Windfire Security server to authenticate and validate"
+    echo -e "                               Available environment: dev, staging, prod"
+    echo -e "                               Default: prod"
+    echo
     echo -e "    -p, --port PORT            Specify server port (1-65535)"
     echo -e "                               Default: 8001"
     echo
