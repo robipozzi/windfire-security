@@ -1,6 +1,8 @@
 source ../setenv.sh
 
 # ***** Install Python prerequisites for Windfire Security tests
+
+# ===== INSTALL PYTHON MODULES PREREQUISITES FUNCTION =====
 installPythonModules()
 {
     pip3 install --upgrade \
@@ -11,13 +13,13 @@ installPythonModules()
                 httpx==0.28.1
 }
 
-# ***** Install custom Windfire Security Python modules
+# ===== INSTALL CUSTOME Windfire Security PYTHON MODULES PREREQUISITES FUNCTION =====
 installCustomPythonModules()
 {
     pip3 install -e $HOME/dev/windfire-security-client
 }
 
-# ***** MAIN EXECUTION
+# ===== EXECUTION =====
 echo "Installing Python prerequisites..."
 installPythonModules
 echo "Python prerequisites installation complete."

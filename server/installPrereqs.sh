@@ -2,6 +2,8 @@ source ../setenv.sh
 source ../commons.sh
 
 # ***** Install Python prerequisites for Windfire Security server
+
+# ===== INSTALL PYTHON MODULES PREREQUISITES FUNCTION =====
 installPythonModules()
 {
     pip3 install --upgrade \
@@ -14,7 +16,7 @@ installPythonModules()
                 cryptography==41.0.0
 }
 
-# ***** MAIN EXECUTION
+# ===== EXECUTION =====
 echo "Installing Python prerequisites..."
 installPythonModules
 echo -e "${GREEN}Python prerequisites installation complete.${RESET}"

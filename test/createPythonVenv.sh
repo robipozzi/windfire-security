@@ -1,6 +1,8 @@
 source ../setenv.sh
 
 # ***** Create Python Virtual environment
+
+# ===== MAIN FUNCTION =====
 main()
 {
     echo -e "${BLU}#########################################################${RESET}"
@@ -23,6 +25,7 @@ main()
     fi
 }
 
+# ===== CREATE PYTHON VIRTUAL ENV FUNCTION =====
 create()
 {
     echo Creating Python Virtual Environment ...
@@ -30,15 +33,17 @@ create()
     echo -e "${GREEN}Python Virtual Environment created${RESET}"
 }
 
+# ===== ACTIVATE PYTHON VIRTUAL ENV FUNCTION =====
 activate()
 {
     source ./activatePythonVenv.sh
 }
 
+# ===== INSTALL PYTHON PREREQUISITE MODULES FUNCTION =====
 installPrereqs()
 {
     source ./installPrereqs.sh
 }
 
-# ***** MAIN EXECUTION
+# ===== EXECUTION =====
 main
