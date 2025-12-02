@@ -11,11 +11,15 @@ password = os.getenv("PASSWORD")
 service = os.getenv("SERVICE")
 verify_ssl = os.getenv("VERIFY_SSL_CERTS").lower() == "true"
 environment = os.getenv("ENVIRONMENT")
+port = int(os.getenv("PORT"))
+print(f"Running with")
+print(f"    Environment:        {environment}")
+print(f"    Test server port:   {port}")
 if environment in ("dev", "staging"):
     httpsAuthServerUrl = "https://localhost:8443"
 elif environment == "prod":
     httpsAuthServerUrl = "https://raspberry01:8443"
-testServerUrl = "http://localhost:8001"
+testServerUrl = f"http://localhost:{port}"
 
 def test_health_endpoint_testserver():
     print(Style.BRIGHT + Fore.BLUE + "Calling /health endpoint on Test Server ...")

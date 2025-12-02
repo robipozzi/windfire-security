@@ -90,5 +90,6 @@ async def health_check():
 
 # Main entry point
 if __name__ == "__main__":
-    print("Starting FastAPI server...")
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    port = int(os.getenv("PORT"))
+    print(f"Starting FastAPI server on port {port}...")
+    uvicorn.run(app, host="0.0.0.0", port=port)

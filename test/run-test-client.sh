@@ -7,6 +7,7 @@ source ../commons.sh
 
 # ===== DEFAULT VALUES =====
 ENVIRONMENT="prod"
+DEFAULT_PORT=8001
 
 # ===== MAIN FUNCTION =====
 main()
@@ -34,12 +35,24 @@ run()
 {
     getCredentials
 
+    echo -e "${YELLOW}Running test authenticating to Windfire Security server in environment: $ENVIRONMENT${RESET}"
+
+    # Build Python command with optional flags
+    local python_cmd="python3 testClient.py"
+
+    if [ -z "${PORT}" ]; then
+        echo -e "${YELLOW}PORT is not set or is empty, calling Test server on default $DEFAULT_PORT${RESET}"
+        PORT=$DEFAULT_PORT
+    fi
+
     # Show configuration
     display_config
 
-    echo -e "${YELLOW}Running test authenticating to Windfire Security server in environment: $ENVIRONMENT${RESET}"
-
+    # Running Test client
+    echo -e "${YELLOW}Running test client with: ENVIRONMENT=$ENVIRONMENT PORT=$PORT USERNAME=$USERNAME PASSWORD={***} SERVICE=$AUTH_SERVICE_TEST VERIFY_SSL_CERTS=$VERIFY_SSL_CERTS python3 testClient.py${RESET}"
+    
     ENVIRONMENT=$ENVIRONMENT \
+    PORT=$PORT \
     USERNAME=$USERNAME \
     PASSWORD=$PASSWORD \
     SERVICE=$AUTH_SERVICE_TEST \
@@ -53,6 +66,10 @@ parse_args() {
         case $1 in
             -e|--environment)
                 ENVIRONMENT="$2"
+                shift 2
+                ;;
+            -p|--port)
+                PORT="$2"
                 shift 2
                 ;;
             -h|--help)
@@ -90,16 +107,17 @@ validate_environment() {
 # ===== CONFIGURATION DISPLAY FUNCTION =====
 display_config() {
     echo -e "${BOLD}${GREEN}Configuration Summary:${RESET}"
-    echo -e "  Environment:    ${YELLOW}$ENVIRONMENT${RESET}"
+    echo -e "  Environment:         ${YELLOW}$ENVIRONMENT${RESET}"
+    echo -e "  Test server port:    ${YELLOW}$PORT${RESET}"
     echo
 }
 
 # ===== HELP FUNCTION =====
 print_help() {
     # Display help information
-    echo -e "${BOLD}==========================================${RESET}"
+    echo -e "${BOLD}===================================${RESET}"
     echo -e "${BOLD}Windfire Security - Test client run${RESET}"
-    echo -e "${BOLD}==========================================${RESET}"
+    echo -e "${BOLD}===================================${RESET}"
     echo
     
     echo -e "${BOLD}DESCRIPTION:${RESET}"
@@ -121,6 +139,9 @@ print_help() {
     echo -e "                               Available environment: dev, staging, prod"
     echo -e "                               Default: prod"
     echo
+    echo -e "    -p, --port PORT            Specify Test server port (1-65535)"
+    echo -e "                               Default: 8001"
+    echo
     echo -e "    -h, --help                 Display this help message and exit"
     echo
     echo -e "${BOLD}EXAMPLES:${RESET}"
@@ -130,6 +151,10 @@ print_help() {
     echo -e "    # Run and authenticate to Windfire Security development environment"
     echo -e "    ./run-test-client.sh -e dev"
     echo
+    echo -e "    # Run test with Test server running on a non default port and" 
+    echo -e "    # authenticate to Windfire Security development environment"
+    echo -e "    ./run-test-client.sh -e dev -p 8112"
+    echo
     echo -e "${BOLD}STARTUP STEPS:${RESET}"
     echo -e "    This script will run the following steps:"
     echo -e "    1. Create a Python Virtual Environment, if does not exist"
@@ -138,7 +163,6 @@ print_help() {
     echo -e "    4. Run test client"
     echo 
     echo -e "${BOLD}TROUBLESHOOTING:${RESET}"
-    echo -e "    • Port already in use: Use -p to specify a different port"
     echo -e "    • Permission denied: Run 'chmod +x start-auth-server.sh'"
     echo -e "    • Module not found: Ensure createPythonVenv.sh is in the current directory"
     echo
