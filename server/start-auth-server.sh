@@ -105,9 +105,9 @@ display_config() {
 # ===== HELP FUNCTION =====
 print_help() {
     # Display help information
-    echo -e "${BOLD}========================================================${RESET}"
+    echo -e "${BOLD}=================================================${RESET}"
     echo -e "${BOLD}Windfire Security - Authentication Server Startup${RESET}"
-    echo -e "${BOLD}========================================================${RESET}"
+    echo -e "${BOLD}=================================================${RESET}"
     echo
     echo -e "${BOLD}DESCRIPTION:${RESET}"
     echo -e "    This script initializes and starts the FastAPI Authentication"
