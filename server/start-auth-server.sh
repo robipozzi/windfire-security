@@ -34,7 +34,7 @@ run_server() {
     echo -e "${YELLOW}Running authentication server${RESET}"
     
     # Build Python command with optional flags
-    local python_cmd="python3 authServer.py --port $PORT"
+    local python_cmd="python3 authServer.py"
 
     if [ -z "${PORT}" ]; then
         echo -e "${YELLOW}PORT is not set or is empty, running with default.${RESET}"
