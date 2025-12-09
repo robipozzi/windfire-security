@@ -10,6 +10,7 @@ username = os.getenv("USERNAME")
 password = os.getenv("PASSWORD")
 service = os.getenv("SERVICE")
 verify_ssl = os.getenv("VERIFY_SSL_CERTS").lower() == "true"
+ca_bundle_path = "../ssl/rootCA.crt"
 environment = os.getenv("ENVIRONMENT")
 port = int(os.getenv("PORT"))
 print(f"Running with")
@@ -51,7 +52,22 @@ def test_health_endpoint_authserver():
     http_headers = {"Content-Type": "application/json"}
     print(Style.BRIGHT + Fore.BLUE + f"Calling {url} ...")
     try:
-        response = requests.get(url, headers=http_headers, timeout=5, verify=verify_ssl)
+        print(Style.BRIGHT + f"VERIFY_SSL_CERTS environment variable is set to {verify_ssl} ...")
+        if verify_ssl:
+            print(Style.BRIGHT + f"Verify SSL certificate using CA certificate {ca_bundle_path}")
+            response = requests.get(url, 
+                                    headers=http_headers, 
+                                    verify=ca_bundle_path,
+                                    timeout=5
+                                    )
+        else:
+            print(Style.BRIGHT + f"SSL certificate will not be verified")
+            response = requests.get(url, 
+                                    headers=http_headers, 
+                                    verify=verify_ssl,
+                                    timeout=5
+                                    )
+        
         print(f"GET {url} -> Status Code: {response.status_code}")
         try:
             print("Response JSON:", response.json())

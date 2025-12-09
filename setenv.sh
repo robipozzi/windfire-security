@@ -18,7 +18,7 @@ PYTORCH_SERVER_VIRTUAL_ENV=windfire-security-server
 PYTORCH_TEST_VIRTUAL_ENV=windfire-security-test
 DEFAULT_USERNAME=windfire
 DEFAULT_AUTH_SERVICE_TEST=windfire-calendar-srv
-VERIFY_SSL_CERTS=false
+VERIFY_SSL_CERTS=true
 
 ## Keycloak settings
 KEYCLOAK_HOME=/Users/robertopozzi/software/keycloak-23.0.3
