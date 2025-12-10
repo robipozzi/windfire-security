@@ -10,7 +10,7 @@ username = os.getenv("USERNAME")
 password = os.getenv("PASSWORD")
 service = os.getenv("SERVICE")
 verify_ssl = os.getenv("VERIFY_SSL_CERTS").lower() == "true"
-ca_bundle_path = "../ssl/rootCA.crt"
+ca_bundle_path = os.getenv("ROOT_CA_PATH")
 environment = os.getenv("ENVIRONMENT")
 port = int(os.getenv("PORT"))
 print(f"Running with")

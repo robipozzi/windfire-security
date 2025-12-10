@@ -68,7 +68,7 @@ createServerCsr()
 signServerCertificate()
 {
     echo "Signing Server Certificate ..."
-    openssl x509 -req -in $SERVER_CSR -CA rootCA.crt -CAkey rootCA.key -CAcreateserial \
+    openssl x509 -req -in $SERVER_CSR -CA $WINDFIRE_ROOT_CA_CERTIFICATE -CAkey $WINDFIRE_ROOT_CA_KEY -CAcreateserial \
                 -out ../server/ssl/windfire-security.crt -days $DAYS_VALID -sha256 \
                 -extfile openssl_config_localhost.ext
     echo "Server Certificate signed"
