@@ -21,6 +21,7 @@ DEFAULT_AUTH_SERVICE_TEST=windfire-calendar-srv
 VERIFY_SSL_CERTS=true
 WINDFIRE_ROOT_CA_KEY="WindfireRootCA.key"
 WINDFIRE_ROOT_CA_CERTIFICATE="WindfireRootCA.crt"
+WINDFIRE_DEFAULT_KEYSTORE_DIR=$HOME/opt/windfire/ssl/keystore
 WINDFIRE_DEFAULT_TRUSTSTORE_DIR=$HOME/opt/windfire/ssl/truststore
 
 ## Keycloak settings

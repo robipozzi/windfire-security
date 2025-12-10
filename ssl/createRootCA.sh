@@ -22,6 +22,8 @@ main()
     signRootCA
     # 3) Copy Windfire root CA certificate to Windfire truststore
     copyRootCAToTruststore
+    # 3) Copy Windfire root CA key to Windfire keystore
+    copyRootCAKeyToKeystore
 }
 
 # ===== CREATE WINDFIRE ROOT CA PRIVATE KEY FUNCTION =====
@@ -52,6 +54,18 @@ copyRootCAToTruststore()
     fi
     cp -f "$WINDFIRE_ROOT_CA_CERTIFICATE" "$WINDFIRE_DEFAULT_TRUSTSTORE_DIR/"
     echo -e "Windfire Root CA certificate ${BLU}$WINDFIRE_ROOT_CA_CERTIFICATE${RESET} copied to truststore ${BLU}$WINDFIRE_DEFAULT_TRUSTSTORE_DIR${RESET}"
+}
+
+# ===== COPY WINDFIRE ROOT CA KEY TO KEYSTORE FUNCTION =====
+copyRootCAKeyToKeystore()
+{
+    echo -e "Copying Windfire Root CA key to keystore ..."
+    if [ ! -f "$WINDFIRE_ROOT_CA_KEY" ]; then
+        echo "Error: key not found: $WINDFIRE_ROOT_CA_KEY" >&2
+        exit 1
+    fi
+    cp -f "$WINDFIRE_ROOT_CA_KEY" "$WINDFIRE_DEFAULT_KEYSTORE_DIR/"
+    echo -e "Windfire Root CA key ${BLU}$WINDFIRE_ROOT_CA_KEY${RESET} copied to keystore ${BLU}$WINDFIRE_DEFAULT_KEYSTORE_DIR${RESET}"
 }
 
 # ===== EXECUTION =====
