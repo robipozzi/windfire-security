@@ -1,6 +1,10 @@
 user: pi
 group: pi
 remote_home_dir: /home/pi
+remote_ssl_dir: "{{ remote_home_dir }}/opt/windfire/ssl"
+remote_keystore_dir: "{{ remote_ssl_dir }}/keystore"
+remote_truststore_dir: "{{ remote_ssl_dir }}/truststore"
+windfire_ca_root_certificate: "WindfireRootCA.crt"
 remote_windfire_security_dir: "{{ remote_home_dir }}/windfire-security"
 venv_path: "{{ remote_windfire_security_dir }}/server/windfire-security-server"
 python_interpreter: "python3"

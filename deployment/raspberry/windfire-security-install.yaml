@@ -72,13 +72,30 @@
         group: "{{ group }}"
         mode: "{{ mode }}"
 
-    # Task 6: Create Python virtual environment
+    # Task 6: Ensure remote truststore directory exists and copy Windfire Root CA certificate
+    - name: Ensure remote truststore directory {{ remote_truststore_dir }} exists
+      file:
+        path: "{{ remote_truststore_dir }}"
+        state: directory
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: "{{ mode }}"
+        recurse: yes
+    - name: Copy {{ windfire_ca_root_certificate }} to "{{ remote_truststore_dir }}" directory on remote server
+      copy:
+        src: "../../ssl/{{ windfire_ca_root_certificate }}"
+        dest: "{{ remote_truststore_dir }}"
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: "{{ mode }}"
+
+    # Task 7: Create Python virtual environment
     - name: Create Python virtual environment
       command:
         cmd: "{{ python_interpreter }} -m venv {{ venv_path }}"
         creates: "{{ venv_path }}/bin/activate"
 
-    # Task 7: Verify virtualenv installation
+    # Task 8: Verify virtualenv installation
     - name: Verify virtualenv is properly configured
       shell:
         cmd: "source {{ venv_path }}/bin/activate && python --version"
@@ -89,7 +106,7 @@
       debug:
         msg: "Python version in virtualenv: {{ python_version.stdout }}"
     
-    # Task 8: Install required Python modules in virtualenv
+    # Task 9: Install required Python modules in virtualenv
     - name: Install required Python modules in virtualenv by running {{ install_python_modules_script }} install script
       shell: |
         source {{ venv_path }}/bin/activate
@@ -97,7 +114,7 @@
       args:
         executable: /bin/bash
       
-    # Task 9: List installed packages
+    # Task 10: List installed packages
     - name: List installed packages in virtualenv
       shell:
         cmd: "{{ venv_path }}/bin/pip list"
