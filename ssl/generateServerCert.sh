@@ -18,7 +18,7 @@ OPENSSL_CONFIG_FILE=""
 # ===== MAIN FUNCTION =====
 main()
 {
-    # Select environment for 
+    # Select environment
     printSelectEnvironment
     echo -e "Environment selected is ${BOLD}$ENVIRONMENT${RESET}"
     case "$ENVIRONMENT" in
