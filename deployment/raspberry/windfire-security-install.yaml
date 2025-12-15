@@ -51,10 +51,28 @@
           - "--exclude=windfire-security-server"
           - "--exclude=__pycache__"
           - "--exclude=config/service_config.json_PLACEHOLDER"
+          - "--exclude=ssl/windfire-security.crt"
+          - "--exclude=ssl/windfire-security.key"
           - "--exclude=.env_PLACEHOLDER"
           - "--exclude=windfire-security-server.log*"
+    
+    # Task 4: Copy SSL certificate and key to remote server
+    - name: Copy certificate {{ windfire_server_certificate }} from {{ local_certs_dir }} to "{{ remote_windfire_security_dir }}/server/ssl" directory on remote server
+      copy:
+        src: "{{ local_certs_dir }}/{{ windfire_server_certificate }}"
+        dest: "{{ remote_windfire_security_dir }}/server/ssl"
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: "{{ mode }}"
+    - name: Copy key {{ windfire_server_key }} from {{ local_certs_dir }} to "{{ remote_windfire_security_dir }}/server/ssl" directory on remote server
+      copy:
+        src: "{{ local_certs_dir }}/{{ windfire_server_key }}"
+        dest: "{{ remote_windfire_security_dir }}/server/ssl"
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: "{{ mode }}"
 
-    # Task 4: Copy setenv.sh to remote server
+    # Task 5: Copy setenv.sh to remote server
     - name: Copy setenv.sh to "{{ remote_windfire_security_dir }}" directory on remote server
       copy:
         src: "../../setenv.sh"
@@ -63,7 +81,7 @@
         group: "{{ group }}"
         mode: "{{ mode }}"
     
-    # Task 5: Copy commons.sh to remote server
+    # Task 6: Copy commons.sh to remote server
     - name: Copy commons.sh to "{{ remote_windfire_security_dir }}" directory on remote server
       copy:
         src: "../../commons.sh"
@@ -72,7 +90,7 @@
         group: "{{ group }}"
         mode: "{{ mode }}"
 
-    # Task 6: Ensure remote truststore directory exists and copy Windfire Root CA certificate
+    # Task 7: Ensure remote truststore directory exists and copy Windfire Root CA certificate
     - name: Ensure remote truststore directory {{ remote_truststore_dir }} exists
       file:
         path: "{{ remote_truststore_dir }}"
@@ -89,13 +107,13 @@
         group: "{{ group }}"
         mode: "{{ mode }}"
 
-    # Task 7: Create Python virtual environment
+    # Task 8: Create Python virtual environment
     - name: Create Python virtual environment
       command:
         cmd: "{{ python_interpreter }} -m venv {{ venv_path }}"
         creates: "{{ venv_path }}/bin/activate"
 
-    # Task 8: Verify virtualenv installation
+    # Task 9: Verify virtualenv installation
     - name: Verify virtualenv is properly configured
       shell:
         cmd: "source {{ venv_path }}/bin/activate && python --version"
@@ -106,7 +124,7 @@
       debug:
         msg: "Python version in virtualenv: {{ python_version.stdout }}"
     
-    # Task 9: Install required Python modules in virtualenv
+    # Task 10: Install required Python modules in virtualenv
     - name: Install required Python modules in virtualenv by running {{ install_python_modules_script }} install script
       shell: |
         source {{ venv_path }}/bin/activate
@@ -114,7 +132,7 @@
       args:
         executable: /bin/bash
       
-    # Task 10: List installed packages
+    # Task 11: List installed packages
     - name: List installed packages in virtualenv
       shell:
         cmd: "{{ venv_path }}/bin/pip list"
