@@ -1,9 +1,7 @@
 #!/bin/bash
+source ../setenv.sh
 
 # ***** Start FastAPI server for Authentication Service
-
-source ../setenv.sh
-source ../commons.sh
 
 # ===== DEFAULT VALUES =====
 LOG_LEVEL="INFO"

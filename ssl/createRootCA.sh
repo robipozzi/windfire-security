@@ -1,4 +1,7 @@
+#!/bin/bash
 source ../setenv.sh
+
+# ***** Create Windfire Root CA
 
 # ===== VARIABLES =====
 COUNTRY="IT"

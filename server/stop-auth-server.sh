@@ -1,4 +1,7 @@
+#!/bin/bash
 source ../setenv.sh
+
+# ***** Stop Windfire Security Authentication Server
 
 PROCESS_TO_KILL=authServer.py
 PID=

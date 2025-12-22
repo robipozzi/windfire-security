@@ -1,5 +1,7 @@
+#!/bin/bash
 source ../setenv.sh
-source ../commons.sh
+
+# ***** Generate Windfire Security Server Certificate
 
 # ===== VARIABLES =====
 COUNTRY="IT"

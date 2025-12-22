@@ -1,9 +1,7 @@
 #!/bin/bash
+source ../setenv.sh
 
 # ***** Start Test server
-
-source ../setenv.sh
-source ../commons.sh
 
 # ===== DEFAULT VALUES =====
 ENVIRONMENT="prod"
