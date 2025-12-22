@@ -1,5 +1,5 @@
 #!/bin/bash
-source ../setenv.sh
+source ../common.sh
 
 # ***** Start Test server
 

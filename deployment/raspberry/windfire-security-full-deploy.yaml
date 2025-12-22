@@ -98,10 +98,10 @@
         group: "{{ group }}"
         mode: "{{ mode }}"
 
-    # Task 5: Copy setenv.sh to remote server
-    - name: Copy setenv.sh to "{{ remote_windfire_security_dir }}" directory on remote server
+    # Task 5: Copy common.sh to remote server
+    - name: Copy common.sh to "{{ remote_windfire_security_dir }}" directory on remote server
       copy:
-        src: "../../setenv.sh"
+        src: "../../common.sh"
         dest: "{{ remote_windfire_security_dir }}"
         owner: "{{ user }}"
         group: "{{ group }}"

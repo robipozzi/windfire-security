@@ -1,5 +1,5 @@
 #!/bin/bash
-source ../setenv.sh
+source ../common.sh
 
 # ***** Generate Windfire Security Server Certificate
 
@@ -22,7 +22,7 @@ OPENSSL_CONFIG_FILE=""
 main()
 {
     # Select environment
-    printSelectEnvironment
+    selectEnvironment
     echo -e "Environment selected is ${BOLD}$ENVIRONMENT${RESET}"
     case "$ENVIRONMENT" in
         dev|staging)

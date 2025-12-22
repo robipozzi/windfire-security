@@ -62,7 +62,7 @@ DEFAULT_PEM_TRUSTSTORE=keycloak.truststore.pem
 
 ###### Function section - START
 # Function to select and set programs run environment
-printSelectEnvironment()
+selectEnvironment()
 {
     ENVIRONMENT_SELECTION=$1
     if [[ -n "${ENVIRONMENT_SELECTION}" ]]; then
@@ -88,7 +88,7 @@ setEnvironment()
         3)  ENVIRONMENT=prod
             ;;
 		*) 	printf "\n${RED}No valid option selected${RESET}\n"
-			printSelectEnvironment
+			selectEnvironment
 			;;
 	esac
 }

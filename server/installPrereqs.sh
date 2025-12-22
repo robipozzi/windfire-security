@@ -1,4 +1,4 @@
-source ../setenv.sh
+source ../common.sh
 
 # ***** Install Python prerequisites for Windfire Security server
 

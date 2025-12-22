@@ -1,5 +1,5 @@
 #!/bin/bash
-source ../setenv.sh
+source ../common.sh
 
 # ***** Stop Windfire Security Authentication Server
 

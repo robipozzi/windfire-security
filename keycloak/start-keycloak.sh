@@ -1,4 +1,4 @@
-source ../setenv.sh
+source ../common.sh
 # ##### Variable section - START
 SCRIPT=start-keycloak.sh
 PLATFORM_OPTION=
