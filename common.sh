@@ -14,12 +14,19 @@ coffee3="${coffee} ${coffee} ${coffee}"
 ##### TERMINAL COLORS - END
 
 ###### Variable section - START
+# ===== DEPLOYMENT / UNDEPLOYMENT VARIABLES =====
+PLATFORM_OPTION=$1
+PLATFORM_SELECTED=false
+DEPLOY_PLATFORM=
+DEPLOY_FUNCTION=
+
 # ===== PYTHON VIRTUAL ENVIRONMENTS VARIABLES =====
 PYTORCH_SERVER_VIRTUAL_ENV=windfire-security-server
 PYTORCH_TEST_VIRTUAL_ENV=windfire-security-test
 DEFAULT_USERNAME=windfire
 DEFAULT_AUTH_SERVICE_TEST=windfire-calendar-srv
 VERIFY_SSL_CERTS=true
+
 # ===== ROOT CA VARIABLES =====
 WINDFIRE_ROOT_CA_KEY="WindfireRootCA.key"
 WINDFIRE_ROOT_CA_CERTIFICATE="WindfireRootCA.crt"
@@ -120,5 +127,34 @@ getCredentials() {
         export USERNAME PASSWORD AUTH_SERVICE_TEST
         break
     done
+}
+
+# Functions to select and set deployment platform
+selectDeploymentPlatform()
+{
+    if [[ $PLATFORM_OPTION == "" && $PLATFORM_SELECTED == false ]]; then
+        echo -e "${BLU}No platform option provided - Select deployment platform :${RESET}"
+        echo -e "${GREEN}1. Raspberry${RESET}"
+        read PLATFORM_OPTION
+        setDeploymentPlatform
+    else
+        echo -e "${CYAN}Platform option provided as argument: $PLATFORM_OPTION${RESET}"
+        setDeploymentPlatform
+    fi
+}
+
+setDeploymentPlatform()
+{
+    case $PLATFORM_OPTION in
+        1)  DEPLOY_PLATFORM="raspberry"
+            PLATFORM_SELECTED=true
+            DEPLOY_PLATFORM="raspberry"
+            ;;
+        *)  echo -e "${RED}No valid option selected${RESET}"
+            PLATFORM_OPTION=""
+            PLATFORM_SELECTED=false
+            selectDeploymentPlatform
+            ;;
+    esac
 }
 ###### Function section - END
