@@ -37,9 +37,9 @@ main()
 createRootCAPrivateKey()
 {
     echo -e "Generating Windfire Root CA private key ..."
-    openssl genrsa -aes256 -out $WINDFIRE_ROOT_CA_KEY 4096
+    openssl genrsa -aes256 -out $WINDFIRE_ROOT_CA_KEY 4096 || { echo -e "${RED}Error: failed to generate Root CA private key${RESET}" >&2; exit 1; }
     echo -e "Windfire Root CA private key ${BLU}$WINDFIRE_ROOT_CA_KEY${RESET} generated"
-    echo 
+    echo
 }
 
 # ===== SELF-SIGN WINDFIRE ROOT CA CERTIFICATE FUNCTION =====
@@ -48,7 +48,8 @@ signRootCA()
     echo -e "Self signing Windfire Root CA certificate ..."
     openssl req -x509 -new -nodes -key $WINDFIRE_ROOT_CA_KEY -sha256 -days $DAYS_VALID \
             -out $WINDFIRE_ROOT_CA_CERTIFICATE \
-            -subj "${SUBJECT}"
+            -subj "${SUBJECT}" \
+        || { echo -e "${RED}Error: failed to self-sign Root CA certificate${RESET}" >&2; rm -f "$WINDFIRE_ROOT_CA_CERTIFICATE"; exit 1; }
     echo -e "Windfire Root CA certificate ${BLU}$WINDFIRE_ROOT_CA_CERTIFICATE${RESET} self signed"
     echo 
 }

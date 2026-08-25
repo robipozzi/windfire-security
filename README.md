@@ -130,6 +130,18 @@ The [ssl/](ssl/) folder contains the scripts used to generate the Windfire self-
 - **[createRootCA.sh](ssl/createRootCA.sh)** generates the Windfire self-signed Root CA (`WindfireRootCA.key`/`.crt`) and copies it into `~/opt/windfire/ssl/{keystore,truststore}`.
 - **[generateServerCert.sh](ssl/generateServerCert.sh)** issues per-host server certificates off that CA, using **[openssl_config_localhost.ext](ssl/openssl_config_localhost.ext)** or **[openssl_config_raspberry.ext](ssl/openssl_config_raspberry.ext)** as the SAN configuration depending on the target host.
 
+**`createRootCA.sh` must be run once before `generateServerCert.sh`** — the latter signs against the CA copies left in `~/opt/windfire/ssl/{keystore,truststore}` and will fail with a clear error if they're not there yet, rather than silently emitting an empty certificate:
+
+```bash
+cd ssl
+./createRootCA.sh        # one-time (or whenever the Root CA needs rotating); prompts for the CA private key passphrase
+./generateServerCert.sh  # prompts for environment (dev/staging/prod) and server Common Name (CN)
+                          # dev/staging -> writes server/ssl/windfire-security.key + .crt
+                          # prod        -> writes to ~/opt/windfire/ssl/certs/raspberry
+```
+
+Re-run `generateServerCert.sh` any time a server cert expires or a new host is added; the Root CA itself only needs to be created once and reused.
+
 These are the certificates that `SSL_KEYFILE`/`SSL_CERTFILE` in the Authentication Service configuration point at (see below), and that the test scripts verify against.
 
 ## Authentication Service

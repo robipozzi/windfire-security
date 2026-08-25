@@ -7,9 +7,9 @@ installPythonModules()
 {
     pip3 install --upgrade \
                 colorama==0.4.6 \
-                requests==2.32.5\
-                fastapi==0.104.1 \
-                uvicorn[standard]==0.24.0 \
+                requests==2.34.2\
+                fastapi==0.141.1 \
+                uvicorn[standard]==0.52.4 \
                 httpx==0.28.1
 }
 

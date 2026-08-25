@@ -3,21 +3,15 @@ source ../common.sh
 # ***** Deactivate Python Virtual environment
 main()
 {
-    # Check if the directory exists
-    echo -e "Check if Python virtual environment ${BLU}$PYTHON_SERVER_VIRTUAL_ENV${RESET} exists"
-    if [ -d "$PYTHON_SERVER_VIRTUAL_ENV" ]; then
-        echo - "Python virtual environment ${BLU}$PYTHON_SERVER_VIRTUAL_ENV${RESET} exists, deactivating ..."
+    # Check if the virtual environment is currently active in this shell
+    echo -e "Check if Python virtual environment ${BLU}$PYTHON_SERVER_VIRTUAL_ENV${RESET} is active"
+    if [ -n "$VIRTUAL_ENV" ] && [ "$(type -t deactivate)" = "function" ]; then
+        echo -e "Python virtual environment ${BLU}$VIRTUAL_ENV${RESET} is active, deactivating ..."
         deactivate
+        echo -e "${GREEN}Python Virtual Environment deactivated${RESET}"
     else
-        echo -e "Python virtual environment ${BLU}$PYTHON_SERVER_VIRTUAL_ENV${RESET} does not exist"
+        echo -e "Python virtual environment ${BLU}$PYTHON_SERVER_VIRTUAL_ENV${RESET} is not active"
     fi
-}
-
-# ***** Deactivate Python Virtual environment
-deactivate()
-{
-    echo -e "${GREEN}To deactivate Python3 Virtual Environment, copy the following command on a shell${RESET}"
-    echo -e "${BLU}deactivate${RESET}"
 }
 
 # ***** MAIN EXECUTION
