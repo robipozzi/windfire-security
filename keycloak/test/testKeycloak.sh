@@ -23,22 +23,22 @@ main()
 	inputRealmPassword
 	inputGrantType
 	
-	echo ${grn}Running curl command to get OAuth2 Access Token ...${end}
+	echo ${GREEN}Running curl command to get OAuth2 Access Token ...${RESET}
 	$FUNCTION
 }
 
 choosePlatform()
 {
-	echo ${grn}Select Keycloak platform to test: ${end}
-    echo "${grn}1. Server on Localhost (No TLS)${end}"
-	echo "${grn}2. Server on Localhost (TLS enabled with self signed certificate)${end}"
+	echo ${GREEN}Select Keycloak platform to test: ${RESET}
+    echo "${GREEN}1. Server on Localhost (No TLS)${RESET}"
+	echo "${GREEN}2. Server on Localhost (TLS enabled with self signed certificate)${RESET}"
 	read PLATFORM_OPTION
 	case $PLATFORM_OPTION in
 		1)  FUNCTION=curlNoTLS
 			;;
 		2)  FUNCTION=curlSelfSignedTLS
 			;;
-		*) 	printf "\n${red}No valid option selected${end}\n"
+		*) 	printf "\n${RED}No valid option selected${RESET}\n"
 			choosePlatform
 			;;
 	esac
@@ -46,10 +46,10 @@ choosePlatform()
 
 curlNoTLS()
 {
-	echo ${blu}Running test on Keycloak HTTP endpoint${end}
+	echo ${BLU}Running test on Keycloak HTTP endpoint${RESET}
 	echo
 	CURL="curl -X POST http://$KEYCLOAK_SERVER_ADDRESS:$KEYCLOAK_SERVER_PORT/realms/$REALM_ID/protocol/openid-connect/token"
-	echo ${blu}Running $CURL ...${end}
+	echo ${BLU}Running $CURL ...${RESET}
 	echo
 	$CURL \
 		-H "Accept: application/json" \
@@ -60,10 +60,10 @@ curlNoTLS()
 
 curlSelfSignedTLS()
 {
-	echo ${blu}Running test on Keycloak HTTPS endpoint${end}
+	echo ${BLU}Running test on Keycloak HTTPS endpoint${RESET}
 	echo
 	CURL="curl -X POST https://$KEYCLOAK_SERVER_ADDRESS:$KEYCLOAK_TLS_SERVER_PORT/realms/$REALM_ID/protocol/openid-connect/token --cacert $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_PEM_TRUSTSTORE"
-	echo ${blu}Running $CURL ...${end}
+	echo ${BLU}Running $CURL ...${RESET}
 	echo
 	$CURL \
 		-H "Accept: application/json" \
@@ -74,10 +74,10 @@ curlSelfSignedTLS()
 
 curlSelfSignedTLSwithNoCertverification()
 {
-	echo ${blu}Running test on Keycloak HTTPS endpoint with no certificate verification${end}
+	echo ${BLU}Running test on Keycloak HTTPS endpoint with no certificate verification${RESET}
 	echo
 	CURL="curl -X POST https://$KEYCLOAK_SERVER_ADDRESS:$KEYCLOAK_TLS_SERVER_PORT/realms/$REALM_ID/protocol/openid-connect/token"
-	echo ${blu}Running $CURL ...${end}
+	echo ${BLU}Running $CURL ...${RESET}
 	echo
 	$CURL \
 		-H "Accept: application/json" \
@@ -89,7 +89,7 @@ curlSelfSignedTLSwithNoCertverification()
 
 inputRealmId()
 {
-	echo ${cyn}Input Realm ID - leaving blank will set Realm ID to ${end}${mag}$DEFAULT_REALM_ID : ${end}
+	echo ${CYAN}Input Realm ID - leaving blank will set Realm ID to ${RESET}${MAGENTA}$DEFAULT_REALM_ID : ${RESET}
 	read REALM_ID
 	if [ "$REALM_ID" == "" ]; then
 		REALM_ID=$DEFAULT_REALM_ID
@@ -98,7 +98,7 @@ inputRealmId()
 
 inputRealmUsername()
 {
-	echo ${cyn}Input Realm Username - leaving blank will set Realm Username to ${end}${mag}$DEFAULT_REALM_USERNAME : ${end}
+	echo ${CYAN}Input Realm Username - leaving blank will set Realm Username to ${RESET}${MAGENTA}$DEFAULT_REALM_USERNAME : ${RESET}
 	read REALM_USERNAME
 	if [ "$REALM_USERNAME" == "" ]; then
 		REALM_USERNAME=$DEFAULT_REALM_USERNAME
@@ -107,17 +107,17 @@ inputRealmUsername()
 
 inputRealmPassword()
 {
-	echo ${cyn}Input Realm Password : ${end}
+	echo ${CYAN}Input Realm Password : ${RESET}
 	read -s REALM_PASSWORD
 	if [ -z $REALM_PASSWORD ]; then
-		echo ${red}No Realm Password input${end}
+		echo ${RED}No Realm Password input${RESET}
 		inputRealmPassword
 	fi
 }
 
 inputGrantType()
 {
-	echo ${cyn}Input Grant Type - leaving blank will set Grant Type to ${end}${mag}$DEFAULT_GRANT_TYPE : ${end}
+	echo ${CYAN}Input Grant Type - leaving blank will set Grant Type to ${RESET}${MAGENTA}$DEFAULT_GRANT_TYPE : ${RESET}
 	read GRANT_TYPE
 	if [ "$GRANT_TYPE" == "" ]; then
 		GRANT_TYPE=$DEFAULT_GRANT_TYPE

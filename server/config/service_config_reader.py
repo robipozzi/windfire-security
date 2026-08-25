@@ -31,7 +31,7 @@ class ServiceConfigReader:
             config_file: Path to the JSON configuration file
             
         Raises:
-            ConfigError: If configuration file is not found or invalid
+            ServiceConfigReader: If configuration file is not found or invalid
         """
         self.config_file = config_file
         self.config: Dict[str, ServiceConfig] = {}
@@ -42,7 +42,7 @@ class ServiceConfigReader:
         Load configuration from JSON file
         
         Raises:
-            ConfigError: If file doesn't exist or JSON is invalid
+            ServiceConfigReader: If file doesn't exist or JSON is invalid
         """
         logger.info(f"Loading service configuration from: {self.config_file} ...")
         
@@ -72,10 +72,10 @@ class ServiceConfigReader:
             config_data: Raw configuration data from JSON
             
         Raises:
-            ConfigError: If configuration structure is invalid
+            ServiceConfigReader: If configuration structure is invalid
         """
         if not isinstance(config_data, dict):
-            raise ConfigError("Configuration must be a JSON object")
+            raise ServiceConfigReader("Configuration must be a JSON object")
         
         if 'services' not in config_data:
             raise ServiceConfigReader("Configuration must contain 'services' field")
@@ -116,7 +116,7 @@ class ServiceConfigReader:
             service_config: Service configuration object
             
         Raises:
-            ConfigError: If configuration is invalid
+            ServiceConfigReader: If configuration is invalid
         """
         if not isinstance(service_config, dict):
             raise ServiceConfigReader(f"Service '{service_name}' configuration must be a JSON object")
@@ -144,7 +144,7 @@ class ServiceConfigReader:
             ServiceConfig object
             
         Raises:
-            ConfigError: If service not found
+            ServiceConfigReader: If service not found
         """
         if service_name not in self.config:
             available_services = list(self.config.keys())
@@ -190,7 +190,7 @@ class ServiceConfigReader:
         Reload configuration from file
         
         Raises:
-            ConfigError: If configuration file is invalid
+            ServiceConfigReader: If configuration file is invalid
         """
         logger.info("Reloading configuration...")
         self.config.clear()
@@ -212,7 +212,7 @@ def load_config(config_file: str = 'config.json') -> ServiceConfigReader:
         ConfigReader instance
         
     Raises:
-        ConfigError: If configuration is invalid
+        ServiceConfigReader: If configuration is invalid
     """
     return ServiceConfigReader(config_file)
 
@@ -220,29 +220,3 @@ def load_config(config_file: str = 'config.json') -> ServiceConfigReader:
 ##### Initialize configuration reader instance #####
 ####################################################
 serviceConfig = ServiceConfigReader()
-
-# Example usage
-if __name__ == "__main__":
-    try:
-        # Load configuration
-        config_reader = load_config('config.json')
-        
-        # List all services
-        print(f"\n📋 Available services: {config_reader.list_services()}")
-        
-        # Get specific service
-        keycloak_config = config_reader.get_service('windfire-calendar-srv')
-        print(f"\n🔐 Keycloak service config:")
-        print(f"   Realm: {keycloak_config.realm}")
-        print(f"   Client ID: {keycloak_config.client_id}")
-        print(f"   Client Secret: (hidden for security)")
-        
-        # Access all services
-        print(f"\n🔍 All services:")
-        for service_name, service_config in config_reader.get_all_services().items():
-            print(f"   - {service_name}: realm={service_config.realm}")
-        
-    except ConfigError as e:
-        print(f"❌ Configuration Error: {str(e)}")
-    except Exception as e:
-        print(f"❌ Unexpected Error: {str(e)}")

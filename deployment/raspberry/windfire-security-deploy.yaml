@@ -81,16 +81,7 @@
         group: "{{ group }}"
         mode: "{{ mode }}"
     
-    # Task 6: Copy commons.sh to remote server
-    - name: Copy commons.sh to "{{ remote_windfire_security_dir }}" directory on remote server
-      copy:
-        src: "../../commons.sh"
-        dest: "{{ remote_windfire_security_dir }}"
-        owner: "{{ user }}"
-        group: "{{ group }}"
-        mode: "{{ mode }}"
-
-    # Task 7: Ensure remote truststore directory exists and copy Windfire Root CA certificate
+    # Task 6: Ensure remote truststore directory exists and copy Windfire Root CA certificate
     - name: Ensure remote truststore directory {{ remote_truststore_dir }} exists
       file:
         path: "{{ remote_truststore_dir }}"
@@ -107,13 +98,13 @@
         group: "{{ group }}"
         mode: "{{ mode }}"
 
-    # Task 8: Create Python virtual environment
+    # Task 7: Create Python virtual environment
     - name: Create Python virtual environment
       command:
         cmd: "{{ python_interpreter }} -m venv {{ venv_path }}"
         creates: "{{ venv_path }}/bin/activate"
 
-    # Task 9: Verify virtualenv installation
+    # Task 8: Verify virtualenv installation
     - name: Verify virtualenv is properly configured
       shell:
         cmd: "source {{ venv_path }}/bin/activate && python --version"
@@ -124,7 +115,7 @@
       debug:
         msg: "Python version in virtualenv: {{ python_version.stdout }}"
     
-    # Task 10: Install required Python modules in virtualenv
+    # Task 9: Install required Python modules in virtualenv
     - name: Install required Python modules in virtualenv by running {{ install_python_modules_script }} install script
       shell: |
         source {{ venv_path }}/bin/activate
@@ -132,7 +123,7 @@
       args:
         executable: /bin/bash
       
-    # Task 11: List installed packages
+    # Task 10: List installed packages
     - name: List installed packages in virtualenv
       shell:
         cmd: "{{ venv_path }}/bin/pip list"

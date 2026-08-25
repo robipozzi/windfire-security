@@ -19,10 +19,10 @@ main()
 
 selectPlatform()
 {
-	echo ${grn}Select Keycloak run platform : ${end}
-    echo "${grn}1. Server on Localhost (No TLS)${end}"
-	echo "${grn}2. Server on Localhost (TLS enabled)${end}"
-	echo "${grn}3. Docker${end}"
+	echo ${GREEN}Select Keycloak run platform : ${RESET}
+    echo "${GREEN}1. Server on Localhost (No TLS)${RESET}"
+	echo "${GREEN}2. Server on Localhost (TLS enabled)${RESET}"
+	echo "${GREEN}3. Docker${RESET}"
 	read PLATFORM_OPTION
 	
 	case $PLATFORM_OPTION in
@@ -41,7 +41,7 @@ selectPlatform()
 			fi
 			docker run -p $KEYCLOAK_PORT:8080 -e KEYCLOAK_ADMIN=$KEYCLOAK_USERNAME -e KEYCLOAK_ADMIN_PASSWORD=$KEYCLOAK_PASSWORD --name $KEYCLOAK_CONTAINER_NAME $KEYCLOAK_DOCKER_IMAGE:$KEYCLOAK_DOCKER_IMAGE_VERSION start-dev
 			;;       
-		*) 	printf "\n${red}No valid option selected${end}\n"
+		*) 	printf "\n${RED}No valid option selected${RESET}\n"
 			selectPlatform
 			;;
 	esac
@@ -49,11 +49,11 @@ selectPlatform()
 
 selectLogLevel()
 {
-	echo ${grn}Select Log level for Keycloak : ${end}
-    echo "${grn}1. Debug${end}"
-	echo "${grn}2. Info${end}"
-	echo "${grn}3. Warn${end}"
-	echo "${grn}4. Error${end}"
+	echo ${GREEN}Select Log level for Keycloak : ${RESET}
+    echo "${GREEN}1. Debug${RESET}"
+	echo "${GREEN}2. Info${RESET}"
+	echo "${GREEN}3. Warn${RESET}"
+	echo "${GREEN}4. Error${RESET}"
 	read LOG_LEVEL
 	
 	case $LOG_LEVEL in
@@ -65,7 +65,7 @@ selectLogLevel()
 			;;
 		4)  LOG_LEVEL=error
 			;;       
-		*) 	printf "\n${red}No valid option selected${end}\n"
+		*) 	printf "\n${RED}No valid option selected${RESET}\n"
 			selectLogLevel
 			;;
 	esac
@@ -73,20 +73,20 @@ selectLogLevel()
 
 inputKeystorePassword()
 {
-	echo ${grn}Input Keystore Password : ${end}
+	echo ${GREEN}Input Keystore Password : ${RESET}
 	read -s KEYSTORE_PASSWORD
 	if [ -z $KEYSTORE_PASSWORD ]; then
-		echo ${red}No Keystore Password input${end}
+		echo ${RED}No Keystore Password input${RESET}
 		inputKeystorePassword
 	fi
 }
 
 inputKeycloakPassword()
 {
-	echo ${grn}Input Keycloak Password : ${end}
+	echo ${GREEN}Input Keycloak Password : ${RESET}
 	read -s KEYCLOAK_PASSWORD
 	if [ -z $KEYCLOAK_PASSWORD ]; then
-		echo ${red}No Keycloak Password input${end}
+		echo ${RED}No Keycloak Password input${RESET}
 		inputKeycloakPassword
 	fi
 }

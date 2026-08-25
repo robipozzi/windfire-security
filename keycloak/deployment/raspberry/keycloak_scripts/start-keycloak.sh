@@ -20,15 +20,15 @@ main()
 
 selectPlatform()
 {
-	echo ${grn}Select Keycloak run platform : ${end}
-    echo "${grn}1. Run server (No TLS)${end}"
-	echo "${grn}2. Run server (TLS enabled)${end}"
-	echo "${grn}3. Run Docker${end}"
+	echo ${GREEN}Select Keycloak run platform : ${RESET}
+    echo "${GREEN}1. Run server (No TLS)${RESET}"
+	echo "${GREEN}2. Run server (TLS enabled)${RESET}"
+	echo "${GREEN}3. Run Docker${RESET}"
 	read PLATFORM_OPTION
 	
 	case $PLATFORM_OPTION in
 		1) 	selectLogLevel
-			echo ${blu}"Keycloak will start with $LOG_LEVEL log level..."${end}
+			echo ${BLU}"Keycloak will start with $LOG_LEVEL log level..."${RESET}
 			# Check if the admin user has already been created
 			if [ ! -f "$KEYCLOAK_HOME/data/.admin_created" ]; then
 				setupAdminAndStart "NOSSL"
@@ -38,7 +38,7 @@ selectPlatform()
 			fi
 			;;
 		2)  selectLogLevel
-			echo ${blu}"Keycloak will start with $LOG_LEVEL log level..."${end}
+			echo ${BLU}"Keycloak will start with $LOG_LEVEL log level..."${RESET}
 			if [ -z $KEYSTORE_PASSWORD ]; then 
 				inputKeystorePassword
 			fi
@@ -56,7 +56,7 @@ selectPlatform()
 			fi
 			docker run -p $KEYCLOAK_PORT:8080 -e KEYCLOAK_ADMIN=$KEYCLOAK_USERNAME -e KEYCLOAK_ADMIN_PASSWORD=$KEYCLOAK_PASSWORD --name $KEYCLOAK_CONTAINER_NAME $KEYCLOAK_DOCKER_IMAGE:$KEYCLOAK_DOCKER_IMAGE_VERSION start-dev
 			;;       
-		*) 	printf "\n${red}No valid option selected${end}\n"
+		*) 	printf "\n${RED}No valid option selected${RESET}\n"
 			selectPlatform
 			;;
 	esac
@@ -64,11 +64,11 @@ selectPlatform()
 
 selectLogLevel()
 {
-	echo ${grn}Select Log level for Keycloak : ${end}
-    echo "${grn}1. Debug${end}"
-	echo "${grn}2. Info${end}"
-	echo "${grn}3. Warn${end}"
-	echo "${grn}4. Error${end}"
+	echo ${GREEN}Select Log level for Keycloak : ${RESET}
+    echo "${GREEN}1. Debug${RESET}"
+	echo "${GREEN}2. Info${RESET}"
+	echo "${GREEN}3. Warn${RESET}"
+	echo "${GREEN}4. Error${RESET}"
 	read LOG_LEVEL
 	
 	case $LOG_LEVEL in
@@ -80,7 +80,7 @@ selectLogLevel()
 			;;
 		4)  LOG_LEVEL=error
 			;;       
-		*) 	printf "\n${red}No valid option selected${end}\n"
+		*) 	printf "\n${RED}No valid option selected${RESET}\n"
 			selectLogLevel
 			;;
 	esac
@@ -88,56 +88,56 @@ selectLogLevel()
 
 setupAdminAndStart()
 {
-    echo ${blu}*************************************${end}
-    echo ${blu}***** Setup Keycloak Admin user *****${end}
-    echo ${blu}*************************************${end}
+    echo ${BLU}*************************************${RESET}
+    echo ${BLU}***** Setup Keycloak Admin user *****${RESET}
+    echo ${BLU}*************************************${RESET}
     echo
     inputKeycloakUsername
 	inputKeycloakPassword
 	export KEYCLOAK_ADMIN_USER=$KEYCLOAK_USERNAME
 	export KEYCLOAK_ADMIN_PASSWORD=$KEYCLOAK_PASSWORD
 
-	echo ${blu}"Starting Keycloak with $KEYCLOAK_USERNAME as administration user..."${end}
+	echo ${BLU}"Starting Keycloak with $KEYCLOAK_USERNAME as administration user..."${RESET}
 	case $1 in
-		NOSSL) 	echo ${blu}"Starting Keycloak with NO SSL enabled, console accessible on http ..."${end}
+		NOSSL) 	echo ${BLU}"Starting Keycloak with NO SSL enabled, console accessible on http ..."${RESET}
 				sudo KEYCLOAK_ADMIN=$KEYCLOAK_USERNAME KEYCLOAK_ADMIN_PASSWORD=$KEYCLOAK_PASSWORD $KEYCLOAK_HOME/bin/kc.sh start-dev --log-level=$LOG_LEVEL > keycloak.log 2>&1 &
 				sudo touch "$KEYCLOAK_HOME/data/.admin_created"
 				;;
-		SSL)	echo ${blu}"Starting Keycloak with SSL enabled, console accessible on https ..."${end}
+		SSL)	echo ${BLU}"Starting Keycloak with SSL enabled, console accessible on https ..."${RESET}
 				sudo KEYCLOAK_ADMIN=$KEYCLOAK_USERNAME KEYCLOAK_ADMIN_PASSWORD=$KEYCLOAK_PASSWORD $KEYCLOAK_HOME/bin/kc.sh start --http-enabled=false --https-key-store-password=$KEYSTORE_PASSWORD --hostname=localhost --log-level=$LOG_LEVEL > keycloak.log 2>&1 &
 				sudo touch "$KEYCLOAK_HOME/data/.admin_created"
 				;;
-		*)		echo ${red}"Invalid option. Please use 'NOSSL', or 'SSL'."${end}
+		*)		echo ${RED}"Invalid option. Please use 'NOSSL', or 'SSL'."${RESET}
             	;;
 	esac
 }
 
 inputKeycloakUsername()
 {
-	echo ${grn}Input Keycloak Username : ${end}
+	echo ${GREEN}Input Keycloak Username : ${RESET}
 	read KEYCLOAK_USERNAME
 	if [ -z $KEYCLOAK_USERNAME ]; then
-		echo ${red}No Keycloak Username input${end}
+		echo ${RED}No Keycloak Username input${RESET}
 		inputKeycloakUsername
 	fi
 }
 
 inputKeycloakPassword()
 {
-	echo ${grn}Input Keycloak Password : ${end}
+	echo ${GREEN}Input Keycloak Password : ${RESET}
 	read -s KEYCLOAK_PASSWORD
 	if [ -z $KEYCLOAK_PASSWORD ]; then
-		echo ${red}No Keycloak Password input${end}
+		echo ${RED}No Keycloak Password input${RESET}
 		inputKeycloakPassword
 	fi
 }
 
 inputKeystorePassword()
 {
-	echo ${grn}Input Keystore Password : ${end}
+	echo ${GREEN}Input Keystore Password : ${RESET}
 	read -s KEYSTORE_PASSWORD
 	if [ -z $KEYSTORE_PASSWORD ]; then
-		echo ${red}No Keystore Password input${end}
+		echo ${RED}No Keystore Password input${RESET}
 		inputKeystorePassword
 	fi
 }

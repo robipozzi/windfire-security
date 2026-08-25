@@ -73,25 +73,6 @@ parse_args() {
     done
 }
 
-# ===== VALIDATION FUNCTION (### NOT USED ###) =====
-validate_environment() {
-    if [ -z "${ENVIRONMENT}" ]; then
-        echo -e "${YELLOW}ENVIRONMENT is not set or is empty.${RESET}"
-        return
-    fi
-
-    case "$ENVIRONMENT" in
-        dev|staging|prod)
-            return 0
-            ;;
-        *)
-            echo -e "${RED}Error: Invalid environment '$ENVIRONMENT'${RESET}"
-            echo "Valid options: dev, staging, prod"
-            exit 1
-            ;;
-    esac
-}
-
 # ===== CONFIGURATION DISPLAY FUNCTION =====
 display_config() {
     echo -e "${BOLD}${GREEN}Configuration Summary:${RESET}"

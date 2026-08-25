@@ -85,11 +85,6 @@ async def custom_https_middleware(request: Request, call_next):
 ################### END - TLS/SSL Configurations ###################
 ######################################################################
 
-#app.add_middleware(BaseHTTPMiddleware, dispatch=log_request_middleware)
-
-#limiter = Limiter(key_func=get_remote_address)
-#app.state.limiter = limiter
-
 # tweak this to see the most efficient size
 app.add_middleware(GZipMiddleware, minimum_size=100)
 

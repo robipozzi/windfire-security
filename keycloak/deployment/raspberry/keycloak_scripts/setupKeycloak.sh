@@ -14,16 +14,16 @@ main()
 
 chooseFunction()
 {
-	echo ${grn}Choose function : ${end}
-    echo "${grn}1. Enable Keycloak TLS${end}"
-    echo "${grn}2. Disable Keycloak TLS${end}"
+	echo ${GREEN}Choose function : ${RESET}
+    echo "${GREEN}1. Enable Keycloak TLS${RESET}"
+    echo "${GREEN}2. Disable Keycloak TLS${RESET}"
 	read FUNCTION_CHOICE
 	case $FUNCTION_CHOICE in
 		1)  FUNCTION=enableTLS
 			;;
         2)  FUNCTION=disableTLS
             ;;
-		*) 	printf "\n${red}No valid option selected${end}\n"
+		*) 	printf "\n${RED}No valid option selected${RESET}\n"
 			chooseFunction
 			;;
 	esac
@@ -31,45 +31,45 @@ chooseFunction()
 
 enableTLS()
 {
-    echo ${blu}*******************************************${end}
-    echo ${blu}***** Enable Keycloak to run with TLS *****${end}
-    echo ${blu}*******************************************${end}
+    echo ${BLU}*******************************************${RESET}
+    echo ${BLU}***** Enable Keycloak to run with TLS *****${RESET}
+    echo ${BLU}*******************************************${RESET}
     echo
 
-    echo ${blu}***** Copying $DEFAULT_KEYSTORE server keystore to $KEYCLOAK_HOME/conf ...${end}
+    echo ${BLU}***** Copying $DEFAULT_KEYSTORE server keystore to $KEYCLOAK_HOME/conf ...${RESET}
     cp $DEFAULT_TLS_DIR/$DEFAULT_KEYSTORE $KEYCLOAK_HOME/conf
     echo
     
-    #echo ${blu}***** Copying $DEFAULT_CACERT_PEM CA PEM certificate to $KEYCLOAK_HOME/conf/truststores ...${end}
+    #echo ${BLU}***** Copying $DEFAULT_CACERT_PEM CA PEM certificate to $KEYCLOAK_HOME/conf/truststores ...${RESET}
     #mkdir $KEYCLOAK_HOME/conf/truststores
     #cp $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_CACERT_PEM $KEYCLOAK_HOME/conf/truststores/$DEFAULT_CACERT_PEM
     #echo
     
-    echo ${blu}***** Rebuilding Keycloak configuration ...${end}
+    echo ${BLU}***** Rebuilding Keycloak configuration ...${RESET}
     CMD_RUN="$KEYCLOAK_HOME/bin/kc.sh build"
-    echo ${cyn}Rebuilding Keycloak configuration using following command:${end} ${grn}$CMD_RUN${end}
+    echo ${CYAN}Rebuilding Keycloak configuration using following command:${RESET} ${GREEN}$CMD_RUN${RESET}
     $CMD_RUN
     echo
-    echo ${blu}***** Keycloak is set to run with TLS enabled${end}
+    echo ${BLU}***** Keycloak is set to run with TLS enabled${RESET}
     echo
 }
 
 disableTLS()
 {
-    echo ${blu}**********************************************${end}
-    echo ${blu}***** Disable Keycloak TLS configuration *****${end}
-    echo ${blu}**********************************************${end}
+    echo ${BLU}**********************************************${RESET}
+    echo ${BLU}***** Disable Keycloak TLS configuration *****${RESET}
+    echo ${BLU}**********************************************${RESET}
     echo
 
-    echo ${blu}***** Removing $DEFAULT_KEYSTORE from $KEYCLOAK_HOME/conf ...${end}
+    echo ${BLU}***** Removing $DEFAULT_KEYSTORE from $KEYCLOAK_HOME/conf ...${RESET}
     rm -rf $KEYCLOAK_HOME/conf/$DEFAULT_KEYSTORE
     echo
     
-    #echo ${blu}***** Removing $DEFAULT_CACERT_PEM CA PEM Certificate from $KEYCLOAK_HOME/conf/truststores ...${end}
+    #echo ${BLU}***** Removing $DEFAULT_CACERT_PEM CA PEM Certificate from $KEYCLOAK_HOME/conf/truststores ...${RESET}
     #rm -rf $KEYCLOAK_HOME/conf/truststores/$DEFAULT_CACERT_PEM
     #echo
     
-    echo ${blu}***** Keycloak is set to run with TLS disabled${end}
+    echo ${BLU}***** Keycloak is set to run with TLS disabled${RESET}
     echo
 }
 # ***** Function section - END

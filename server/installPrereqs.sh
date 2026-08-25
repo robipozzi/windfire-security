@@ -12,7 +12,8 @@ installPythonModules()
                 pydantic==2.5.0 \
                 PyJWT==2.8.0 \
                 requests==2.32.5 \
-                cryptography==41.0.0
+                cryptography==41.0.0 \
+                python-dotenv==1.0.1
 }
 
 # ===== EXECUTION =====

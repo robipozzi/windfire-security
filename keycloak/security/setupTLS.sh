@@ -18,12 +18,12 @@ main()
 
 chooseFunction()
 {
-	echo ${grn}Choose function : ${end}
-    echo "${grn}1. Create our own Certification Authority${end}"
-    echo "${grn}2. Generate server keystore and certificate signing request${end}"
-    echo "${grn}3. Sign server certificate with CA${end}"
-    echo "${grn}4. Create client truststore${end}"
-    echo "${grn}5. Generate all TLS configuration${end}"
+	echo ${GREEN}Choose function : ${RESET}
+    echo "${GREEN}1. Create our own Certification Authority${RESET}"
+    echo "${GREEN}2. Generate server keystore and certificate signing request${RESET}"
+    echo "${GREEN}3. Sign server certificate with CA${RESET}"
+    echo "${GREEN}4. Create client truststore${RESET}"
+    echo "${GREEN}5. Generate all TLS configuration${RESET}"
     read FUNCTION_CHOICE
 	case $FUNCTION_CHOICE in
 		1)  FUNCTION=createCA
@@ -36,7 +36,7 @@ chooseFunction()
             ;;
         5)  FUNCTION=createTLSConfiguration
             ;;
-		*) 	printf "\n${red}No valid option selected${end}\n"
+		*) 	printf "\n${RED}No valid option selected${RESET}\n"
 			chooseFunction
 			;;
 	esac
@@ -44,9 +44,9 @@ chooseFunction()
 
 createCA()
 {
-    echo ${blu}****************************************************${end}
-    echo ${blu}***** Generate our own Certification Authority *****${end}
-    echo ${blu}****************************************************${end}
+    echo ${BLU}****************************************************${RESET}
+    echo ${BLU}***** Generate our own Certification Authority *****${RESET}
+    echo ${BLU}****************************************************${RESET}
     echo 
 
     ###########################################################################################################################################
@@ -55,36 +55,36 @@ createCA()
     # With these steps done we can now generate our own CA that will be used to sign certificates later.                                      #
     # The CA is simply a public/private key pair and certificate that is signed by itself, and is only intended to sign other certificates.   #
     ###########################################################################################################################################
-    echo ${blu}***** Creating $DEFAULT_CA_KEYSTORE CA keystore containing a key pair that will be used to sign $DEFAULT_CACERT CA certificate ... ${end}
+    echo ${BLU}***** Creating $DEFAULT_CA_KEYSTORE CA keystore containing a key pair that will be used to sign $DEFAULT_CACERT CA certificate ... ${RESET}
 
     CMD_KEYSTORE_RUN="keytool -genkeypair -keyalg RSA -keysize 2048 -validity $DEFAULT_VALIDITY -keystore $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE -alias $DEFAULT_CA_ALIAS"
-    echo ${cyn}Generating CA keystore using following command:${end} ${grn}$CMD_KEYSTORE_RUN${end}
+    echo ${CYAN}Generating CA keystore using following command:${RESET} ${GREEN}$CMD_KEYSTORE_RUN${RESET}
     $CMD_KEYSTORE_RUN
     echo
     
     CMD_CERTIFICATE_RUN="keytool -exportcert -keystore $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE -alias $DEFAULT_CA_ALIAS -file $DEFAULT_TLS_DIR/$DEFAULT_CACERT"
-    echo ${cyn}Generating $DEFAULT_CACERT CA certificate using following command:${end} ${grn}$CMD_CERTIFICATE_RUN${end}
+    echo ${CYAN}Generating $DEFAULT_CACERT CA certificate using following command:${RESET} ${GREEN}$CMD_CERTIFICATE_RUN${RESET}
     $CMD_CERTIFICATE_RUN
     echo
 
     CMD_CERTIFICATE_RUN="openssl x509 -inform der -in $DEFAULT_TLS_DIR/$DEFAULT_CACERT -out $DEFAULT_TLS_DIR/$DEFAULT_CACERT_PEM"
-    echo ${cyn}Converting CA certificate to PEM format using following command:${end} ${grn}$CMD_CERTIFICATE_RUN${end}
+    echo ${CYAN}Converting CA certificate to PEM format using following command:${RESET} ${GREEN}$CMD_CERTIFICATE_RUN${RESET}
     $CMD_CERTIFICATE_RUN
     echo
 }
 
 createTLSKeyAndCsr()
 {
-    echo ${blu}*****************************************************************${end}
-    echo ${blu}***** Generate TLS keystore and Certificate Signing Request *****${end}
-    echo ${blu}*****************************************************************${end}
+    echo ${BLU}*****************************************************************${RESET}
+    echo ${BLU}***** Generate TLS keystore and Certificate Signing Request *****${RESET}
+    echo ${BLU}*****************************************************************${RESET}
     echo
 
     ##################################################################################################
     # The first step of deploying Keycloak with TLS support is to generate a public/private keypair. #
     # We will use Java's keytool command for this task.                                              #
     ##################################################################################################
-    echo ${blu}***** Creating new keystore with alias $DEFAULT_KEYSTORE_ALIAS ...${end}
+    echo ${BLU}***** Creating new keystore with alias $DEFAULT_KEYSTORE_ALIAS ...${RESET}
     if [ -z $KEYSTORE ]; then 
 		inputKeystore
 	fi
@@ -92,7 +92,7 @@ createTLSKeyAndCsr()
 		inputValidity
 	fi
     CMD_RUN="keytool -genkeypair -keystore $DEFAULT_TLS_DIR/$KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -keyalg RSA -keysize 2048 -validity $DEFAULT_VALIDITY"
-    echo ${cyn}Creating keystore using following command:${end} ${grn}$CMD_RUN${end}
+    echo ${CYAN}Creating keystore using following command:${RESET} ${GREEN}$CMD_RUN${RESET}
     $CMD_RUN
     echo
 
@@ -101,56 +101,56 @@ createTLSKeyAndCsr()
     # This signing request, when signed by a trusted CA results in the actual certificate which can then be installed in the keystore and    #
     # used for authentication purposes.                                                                                                      #
     ##########################################################################################################################################
-    echo ${blu}***** Generating $DEFAULT_CSR Certificate Signing Request from $KEYSTORE keystore ...${end}
+    echo ${BLU}***** Generating $DEFAULT_CSR Certificate Signing Request from $KEYSTORE keystore ...${RESET}
     CMD_RUN="keytool -certreq -keystore $DEFAULT_TLS_DIR/$KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -file $DEFAULT_TLS_DIR/$DEFAULT_CSR"
-    echo ${cyn}Generating CSR using following command:${end} ${grn}$CMD_RUN${end}
+    echo ${CYAN}Generating CSR using following command:${RESET} ${GREEN}$CMD_RUN${RESET}
     $CMD_RUN
     echo
 }
 
 signCertificate()
 {
-    echo ${blu}***************************************${end}
-    echo ${blu}***** Sign the server certificate *****${end}
-    echo ${blu}***************************************${end}
+    echo ${BLU}***************************************${RESET}
+    echo ${BLU}***** Sign the server certificate *****${RESET}
+    echo ${BLU}***************************************${RESET}
     echo 
 
     ############################################################################################
     # Create a server certificate signing the Certificate Signing Request using CA certificate #
     ############################################################################################
-    echo ${blu}***** Signing $DEFAULT_SERVER_CERTIFICATE server certificate using CA certificate within $DEFAULT_CA_KEYSTORE CA keystore ... ${end}
+    echo ${BLU}***** Signing $DEFAULT_SERVER_CERTIFICATE server certificate using CA certificate within $DEFAULT_CA_KEYSTORE CA keystore ... ${RESET}
     CMD_RUN="keytool -gencert -keystore $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE -alias $DEFAULT_CA_ALIAS -infile $DEFAULT_TLS_DIR/$DEFAULT_CSR -outfile $DEFAULT_TLS_DIR/$DEFAULT_SERVER_CERTIFICATE -validity $DEFAULT_VALIDITY"
-    echo ${cyn}Signing certificate with CA using following command:${end} ${grn}$CMD_RUN${end}
+    echo ${CYAN}Signing certificate with CA using following command:${RESET} ${GREEN}$CMD_RUN${RESET}
     $CMD_RUN
     echo 
 
     #######################################
     # Import CA certificate into keystore #
     #######################################
-    echo ${blu}***** Importing $DEFAULT_CACERT CA certificate into server keystore ... ${end}
+    echo ${BLU}***** Importing $DEFAULT_CACERT CA certificate into server keystore ... ${RESET}
     if [ -z $KEYSTORE ]; then 
 		inputKeystore
 	fi
     CMD_RUN="keytool -import -keystore $DEFAULT_TLS_DIR/$KEYSTORE -file $DEFAULT_TLS_DIR/$DEFAULT_CACERT -alias $DEFAULT_CA_ALIAS"
-    echo ${cyn}Importing CA certificate in keystore using following command:${end} ${grn}$CMD_RUN${end}
+    echo ${CYAN}Importing CA certificate in keystore using following command:${RESET} ${GREEN}$CMD_RUN${RESET}
     $CMD_RUN
     echo 
     
     ######################################################
     # Import the signed server certificate into keystore #
     ######################################################
-    echo ${blu}***** Importing $DEFAULT_SERVER_CERTIFICATE signed server certificate into $DEFAULT_KEYSTORE keystore ... ${end}
+    echo ${BLU}***** Importing $DEFAULT_SERVER_CERTIFICATE signed server certificate into $DEFAULT_KEYSTORE keystore ... ${RESET}
     CMD_RUN="keytool -importcert -keystore $DEFAULT_TLS_DIR/$DEFAULT_KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -file $DEFAULT_TLS_DIR/$DEFAULT_SERVER_CERTIFICATE"
-    echo ${cyn}Importing signed certificate into keystore using following command:${end} ${grn}$CMD_RUN${end}
+    echo ${CYAN}Importing signed certificate into keystore using following command:${RESET} ${GREEN}$CMD_RUN${RESET}
     $CMD_RUN
     echo
 }
 
 createClientTruststore()
 {
-    echo ${blu}**************************************${end}
-    echo ${blu}***** Generate client truststore *****${end}
-    echo ${blu}**************************************${end}
+    echo ${BLU}**************************************${RESET}
+    echo ${BLU}***** Generate client truststore *****${RESET}
+    echo ${BLU}**************************************${RESET}
     echo 
 
     ###########################################################################################################################
@@ -161,30 +161,30 @@ createClientTruststore()
     # Importing a certificate into one's truststore also means trusting all certificates that are signed by that certificate. #
     # This attribute is called the chain of trust.                                                                            #
     ###########################################################################################################################
-    echo ${blu}***** Importing $DEFAULT_CACERT_PEM Self CA certificate into JKS formatted truststore ... ${end}
+    echo ${BLU}***** Importing $DEFAULT_CACERT_PEM Self CA certificate into JKS formatted truststore ... ${RESET}
     if [ -z $TRUSTSTORE ]; then 
 		inputTruststore
 	fi
     CMD_RUN="keytool -importcert -file $DEFAULT_TLS_DIR/$DEFAULT_CACERT_PEM -alias $DEFAULT_CA_ALIAS -keystore $DEFAULT_TRUSTSTORE_DIR/$TRUSTSTORE"
-    echo ${cyn}Importing Self CA certificate into client truststore using following command:${end} ${grn}$CMD_RUN${end}
+    echo ${CYAN}Importing Self CA certificate into client truststore using following command:${RESET} ${GREEN}$CMD_RUN${RESET}
     $CMD_RUN
     echo
 
-    echo ${blu}***** Importing $DEFAULT_KEYSTORE server certificate self signed with $DEFAULT_CACERT_PEM CA certificate into $TRUSTSTORE JKS formatted truststore ... ${end}   
+    echo ${BLU}***** Importing $DEFAULT_KEYSTORE server certificate self signed with $DEFAULT_CACERT_PEM CA certificate into $TRUSTSTORE JKS formatted truststore ... ${RESET}   
     CMD_RUN="keytool -importkeystore -srckeystore $DEFAULT_TLS_DIR/$DEFAULT_KEYSTORE -destkeystore $DEFAULT_TRUSTSTORE_DIR/$TRUSTSTORE"
-    echo ${cyn}Importing self signed server certificate into client truststore using following command:${end} ${grn}$CMD_RUN${end}
+    echo ${CYAN}Importing self signed server certificate into client truststore using following command:${RESET} ${GREEN}$CMD_RUN${RESET}
     $CMD_RUN
     echo
     
-    echo ${blu}***** Converting $TRUSTSTORE JKS truststore to $DEFAULT_PKCS12_TRUSTSTORE PKCS12 truststore for non Java clients ... ${end}
+    echo ${BLU}***** Converting $TRUSTSTORE JKS truststore to $DEFAULT_PKCS12_TRUSTSTORE PKCS12 truststore for non Java clients ... ${RESET}
     CMD_PKCS_RUN="keytool -importkeystore -srckeystore $DEFAULT_TRUSTSTORE_DIR/$TRUSTSTORE -destkeystore $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_PKCS12_TRUSTSTORE -srcstoretype JKS -deststoretype PKCS12"
-    echo ${cyn}Converting JKS truststore to PKCS12 format using following command:${end} ${grn}$CMD_PKCS_RUN${end}
+    echo ${CYAN}Converting JKS truststore to PKCS12 format using following command:${RESET} ${GREEN}$CMD_PKCS_RUN${RESET}
     $CMD_PKCS_RUN
     echo
     
-    echo ${blu}***** Converting $DEFAULT_PKCS12_TRUSTSTORE PKCS12 truststore to $DEFAULT_PEM_TRUSTSTORE PEM truststore for non Java clients ... ${end}
+    echo ${BLU}***** Converting $DEFAULT_PKCS12_TRUSTSTORE PKCS12 truststore to $DEFAULT_PEM_TRUSTSTORE PEM truststore for non Java clients ... ${RESET}
     CMD_PEM_RUN="openssl pkcs12 -in $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_PKCS12_TRUSTSTORE -out $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_PEM_TRUSTSTORE -nodes"
-    echo ${cyn}Converting PKCS12 truststore to PEM format using following command:${end} ${grn}$CMD_PEM_RUN${end}
+    echo ${CYAN}Converting PKCS12 truststore to PEM format using following command:${RESET} ${GREEN}$CMD_PEM_RUN${RESET}
     $CMD_PEM_RUN
     echo
 }
@@ -203,7 +203,7 @@ inputKeystore()
     if [ "$KEYSTORE" != "" ]; then
         echo Keystore is set to $KEYSTORE
     else
-        echo ${grn}Enter keystore - leaving blank will set keystore to ${end}${mag}$DEFAULT_KEYSTORE : ${end}
+        echo ${GREEN}Enter keystore - leaving blank will set keystore to ${RESET}${MAGENTA}$DEFAULT_KEYSTORE : ${RESET}
         read KEYSTORE
         if [ "$KEYSTORE" == "" ]; then
             KEYSTORE=$DEFAULT_KEYSTORE
@@ -217,7 +217,7 @@ inputValidity()
     if [ "$VALIDITY" != "" ]; then
         echo Validity days are set to $VALIDITY
     else
-        echo ${grn}Enter keystore validity days - leaving blank will set validaty days to ${end}${mag}$DEFAULT_VALIDITY : ${end}
+        echo ${GREEN}Enter keystore validity days - leaving blank will set validaty days to ${RESET}${MAGENTA}$DEFAULT_VALIDITY : ${RESET}
         read VALIDITY
         if [ "$VALIDITY" == "" ]; then
             VALIDITY=$DEFAULT_VALIDITY
@@ -231,7 +231,7 @@ inputTruststore()
     if [ "$TRUSTSTORE" != "" ]; then
         echo Truststore is set to $TRUSTSTORE
     else
-        echo ${grn}Enter truststore - leaving blank will set truststore to ${end}${mag}$DEFAULT_TRUSTSTORE : ${end}
+        echo ${GREEN}Enter truststore - leaving blank will set truststore to ${RESET}${MAGENTA}$DEFAULT_TRUSTSTORE : ${RESET}
         read TRUSTSTORE
         if [ "$TRUSTSTORE" == "" ]; then
             TRUSTSTORE=$DEFAULT_TRUSTSTORE

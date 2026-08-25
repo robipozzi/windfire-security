@@ -1,5 +1,4 @@
 import os
-import json
 import logging
 from logging.handlers import TimedRotatingFileHandler
 
@@ -54,26 +53,13 @@ class LoggerFactory:
             backupCount=7
         )
         stream_handler = logging.StreamHandler()
-        #file_handler.setFormatter(JsonFormatter())
         file_handler.setFormatter(ColorFormatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s"))
         stream_handler.setFormatter(ColorFormatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s"))
-        self.logger.handlers = [file_handler]
+        self.logger.handlers = [file_handler, stream_handler]
         #print(f"Logger level set to: {self.level} for logger '{logger_name}'")
         self.logger.setLevel(self.level)
         return self.logger
         
-class JsonFormatter(logging.Formatter):
-    def format(self, record):
-        log_record = {
-            "timestamp": self.formatTime(record, self.datefmt),
-            "level": record.levelname,
-            "module": record.module,
-            "funcName": record.funcName,
-            "lineno": record.lineno,
-            "message": record.getMessage(),
-        }
-        return json.dumps(log_record)        
-
 class ColorFormatter(logging.Formatter):
     COLORS = {
         'DEBUG': '\033[36m',    # Cyan
