@@ -92,7 +92,7 @@
         recurse: yes
     - name: Copy {{ windfire_ca_root_certificate }} to "{{ remote_truststore_dir }}" directory on remote server
       copy:
-        src: "../../ssl/{{ windfire_ca_root_certificate }}"
+        src: "{{ local_ssl_dir }}/truststore/{{ windfire_ca_root_certificate }}"
         dest: "{{ remote_truststore_dir }}"
         owner: "{{ user }}"
         group: "{{ group }}"
