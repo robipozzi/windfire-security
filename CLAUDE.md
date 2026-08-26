@@ -45,7 +45,7 @@ Both prompt interactively for username/password/service (`common.sh`'s `getCrede
 
 `ssl/createRootCA.sh` generates the Windfire self-signed Root CA (`WindfireRootCA.key`/`.crt`) and copies it into `~/opt/windfire/ssl/{keystore,truststore}`. `ssl/generateServerCert.sh` issues per-host server certs off that CA (uses `openssl_config_localhost.ext` / `openssl_config_raspberry.ext` as the SAN config depending on target). These certs are what `SSL_KEYFILE`/`SSL_CERTFILE` in `server/.env` point at, and what `ROOT_CA_PATH` in the test scripts verifies against.
 
-Keycloak's own TLS is set up separately via `keycloak/security/setupTLS.sh` (generates a Java keystore) + `keycloak/setupKeycloakMode.sh` (enables/disables TLS on the Keycloak server) — this is independent of the Windfire Root CA above.
+Keycloak's own TLS is set up separately via `keycloak/security/setupTLS.sh` (generates a Java keystore) + `keycloak/setupKeycloakMode.sh` (enables/disables TLS on the Keycloak server) — this is independent of the Windfire Root CA above. The auth server trusts that separate CA when it calls Keycloak's token/userinfo/JWKS endpoints via `KEYCLOAK_VERIFY_SSL_CERTS`/`KEYCLOAK_CA_CERT_PATH` in `server/.env` (see `keycloakAuth.py`'s `KeycloakConfig.verify`) — without a correct `KEYCLOAK_CA_CERT_PATH`, calls to a self-signed Keycloak fail with `SSLCertVerificationError`, which `authRouters.py` surfaces as a misleading 401.
 
 ## Architecture of `server/`
 

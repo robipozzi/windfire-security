@@ -42,6 +42,14 @@ class KeycloakConfig:
         self.jwks_endpoint = f"{self.server_url}/realms/{self.realm}/protocol/openid-connect/certs"
         self.introspect_endpoint = f"{self.server_url}/realms/{self.realm}/protocol/openid-connect/token/introspect"
 
+        # SSL verification for outgoing calls to Keycloak (Keycloak's own TLS
+        # uses a separate self-signed CA from the Windfire Root CA - see CLAUDE.md)
+        verify_ssl = settings.get('KEYCLOAK_VERIFY_SSL_CERTS')
+        if verify_ssl is None:
+            verify_ssl = True  # secure by default when unset
+        ca_cert_path = settings.get('KEYCLOAK_CA_CERT_PATH')
+        self.verify = ca_cert_path if (verify_ssl and ca_cert_path) else verify_ssl
+
         logger.debug(f"KeycloakConfig: ")
         logger.debug(f"     server_url: {self.server_url}")
         logger.debug(f"     service: {self.service}")
@@ -51,6 +59,7 @@ class KeycloakConfig:
         logger.debug(f"     userinfo_endpoint: {self.userinfo_endpoint}")
         logger.debug(f"     jwks_endpoint: {self.jwks_endpoint}")
         logger.debug(f"     introspect_endpoint: {self.introspect_endpoint}")
+        logger.debug(f"     verify: {self.verify}")
     
     def validate(self):
         """Validate configuration"""
@@ -103,13 +112,14 @@ class KeycloakAuth:
             response = self.session.post(
                 self.config.token_endpoint,
                 data=payload,
-                timeout=10
+                timeout=10,
+                verify=self.config.verify
             )
             response.raise_for_status()
-            
+
             token_data = response.json()
             self._store_tokens(token_data)
-            
+
             logger.info(f"User {username} authenticated successfully")
             return token_data
             
@@ -144,13 +154,14 @@ class KeycloakAuth:
             response = self.session.post(
                 self.config.token_endpoint,
                 data=payload,
-                timeout=10
+                timeout=10,
+                verify=self.config.verify
             )
             response.raise_for_status()
-            
+
             token_data = response.json()
             self._store_tokens(token_data)
-            
+
             logger.info("Service account authenticated successfully")
             return token_data
             
@@ -194,13 +205,14 @@ class KeycloakAuth:
             response = self.session.post(
                 self.config.token_endpoint,
                 data=payload,
-                timeout=10
+                timeout=10,
+                verify=self.config.verify
             )
             response.raise_for_status()
-            
+
             token_data = response.json()
             self._store_tokens(token_data)
-            
+
             logger.info("Access token refreshed successfully")
             return token_data
             
@@ -236,7 +248,8 @@ class KeycloakAuth:
             response = self.session.get(
                 self.config.userinfo_endpoint,
                 headers=headers,
-                timeout=10
+                timeout=10,
+                verify=self.config.verify
             )
             response.raise_for_status()
             
@@ -292,7 +305,8 @@ class KeycloakAuth:
                 data=payload,
                 headers=headers,
                 auth=auth,
-                timeout=10
+                timeout=10,
+                verify=self.config.verify
             )
             
             # Handle different response codes
@@ -446,7 +460,8 @@ class KeycloakAuth:
         try:
             response = self.session.get(
                 self.config.jwks_endpoint,
-                timeout=10
+                timeout=10,
+                verify=self.config.verify
             )
             response.raise_for_status()
             
@@ -492,7 +507,8 @@ class KeycloakAuth:
             response = self.session.post(
                 revoke_endpoint,
                 data=payload,
-                timeout=10
+                timeout=10,
+                verify=self.config.verify
             )
             response.raise_for_status()
             
