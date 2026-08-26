@@ -77,7 +77,17 @@ In case *option 1* is selected, the script just runs the **<KEYCLOAK_HOME>/bin/k
 Keycloak Admin console will respond on http://localhost:8080/admin. The first time you launch it, you will need to create an admin user that will secure all the following accesses, follow the instructions at *https://www.keycloak.org/getting-started/getting-started-zip* to create admin credentials.
 
 #### Install and run Keycloak as server on a Raspberry Pi box
-[TODO]
+The [keycloak/deployment/raspberry/](keycloak/deployment/raspberry/) folder contains Ansible playbooks that automate the OS-level prerequisites and the Keycloak distribution download for a Raspberry Pi, configured via **[conf/raspberry-config.yml](keycloak/deployment/raspberry/conf/raspberry-config.yml)**:
+
+```bash
+cd keycloak/deployment/raspberry
+./install-raspberry.sh   # runs raspberry.yaml: updates apt cache, upgrades packages, installs OpenJDK
+./install-keycloak.sh    # runs keycloak.yaml: downloads and unpacks the Keycloak 25.0.2 zip to /opt/keycloak,
+                          # and copies keycloak_scripts/ to ~/keycloak on the Pi
+./uninstall-keycloak.sh  # removes the installed Keycloak directory and utility scripts
+```
+
+Everything past the unpack step — generating the TLS keystore, enabling/disabling TLS, and starting Keycloak (dev mode, TLS, or Docker) with an admin user — is still manual: SSH onto the Pi and run the scripts copied under `~/keycloak` (source in **[keycloak_scripts/](keycloak/deployment/raspberry/keycloak_scripts/)**), which mirror **[setupKeycloakMode.sh](keycloak/setupKeycloakMode.sh)** and **[start-keycloak.sh](keycloak/start-keycloak.sh)** described above — they `read -s` for credentials interactively and background the process with `&` (no systemd unit, so Keycloak won't survive a reboot).
 
 #### Secure and run Keycloak server with TLS self signed certificate
 Keycloak can be configured to run with TLS enabled, loading the required certificate infrastructure using files in PEM format or from a Java Keystore. When both alternatives are configured, the PEM files takes precedence over the Java Keystores.
@@ -110,12 +120,11 @@ In case Docker is selected, Keycloak will run with the following default paramet
 * **Keycloak Docker Image** set to *quay.io/keycloak/keycloak*
 * **Keycloak Docker Image version** set to *23.0.3*
 * **Keycloak Container name** set to *keycloak*
-* **Keycloak Port** remapped and exposed on *8081*
-* **Keycloak Admin console username** rset to *admin*
+* **Keycloak Admin console username** set to *admin*
 
-The script will only require to input the Password for Keycloak Admin console.
+The script will require the Password for Keycloak Admin console, and it also relies on **`KEYCLOAK_PORT`** being exported in your shell beforehand (it has no default in [common.sh](common.sh)) — e.g. `export KEYCLOAK_PORT=8081` — otherwise `docker run -p :8080` leaves Docker to assign a random host port.
 
-With these default values, once the container is running, Keycloak Admin Console will be available at **http://localhost:8081/admin**.
+With `KEYCLOAK_PORT` set, once the container is running, Keycloak Admin Console will be available at **http://localhost:$KEYCLOAK_PORT/admin**.
 
 #### Test Keycloak functioning
 A convenient script **[testKeycloak.sh](keycloak/test/testKeycloak.sh)** is provided to run a simple curl command to authenticate with Keycloak and get back the authentication token to verify everything is setup and works fine.
