@@ -19,7 +19,7 @@ print(f"    Test server port:   {port}")
 if environment in ("dev", "staging"):
     httpsAuthServerUrl = "https://localhost:8443"
 elif environment == "prod":
-    httpsAuthServerUrl = "https://raspberry01:8443"
+    httpsAuthServerUrl = "https://raspberry01:8444"
 testServerUrl = f"http://localhost:{port}"
 
 def test_health_endpoint_testserver():

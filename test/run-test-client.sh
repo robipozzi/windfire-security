@@ -145,7 +145,7 @@ print_help() {
     echo -e "    -h, --help                 Display this help message and exit"
     echo
     echo -e "${BOLD}EXAMPLES:${RESET}"
-    echo -e "    # Run with default settings (prod environment, Windfire Security server on https://raspberry01:8443)"
+    echo -e "    # Run with default settings (prod environment, Windfire Security server on https://raspberry01:8444)"
     echo -e "    ./run-test-client.sh"
     echo
     echo -e "    # Run and authenticate to Windfire Security development environment"
