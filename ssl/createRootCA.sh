@@ -28,9 +28,12 @@ main()
     
     # 3) Copy Windfire root CA certificate to Windfire truststore
     copyRootCAToTruststore
-    
-    # 3) Copy Windfire root CA key to Windfire keystore
+
+    # 4) Copy Windfire root CA key to Windfire keystore
     copyRootCAKeyToKeystore
+
+    # 5) Delete Windfire root CA certificate and key from ssl folder
+    deleteRootCAFromSslFolder
 }
 
 # ===== CREATE WINDFIRE ROOT CA PRIVATE KEY FUNCTION =====
@@ -97,7 +100,27 @@ copyRootCAKeyToKeystore()
     # Copy Root CA key to Keystore directory
     cp -f "$WINDFIRE_ROOT_CA_KEY" "$WINDFIRE_DEFAULT_KEYSTORE_DIR/"
     echo -e "Windfire Root CA key ${BLU}$WINDFIRE_ROOT_CA_KEY${RESET} copied to keystore ${BLU}$WINDFIRE_DEFAULT_KEYSTORE_DIR${RESET}"
-    echo 
+    echo
+}
+
+# ===== DELETE WINDFIRE ROOT CA CERTIFICATE AND KEY FROM SSL FOLDER FUNCTION =====
+deleteRootCAFromSslFolder()
+{
+    echo -e "Deleting Windfire Root CA certificate and key from ssl folder ..."
+
+    # Only delete if both copies (truststore certificate and keystore key) succeeded
+    if [ ! -f "$WINDFIRE_DEFAULT_TRUSTSTORE_DIR/$WINDFIRE_ROOT_CA_CERTIFICATE" ]; then
+        echo -e "${RED}Error: certificate not found in truststore, skipping cleanup: $WINDFIRE_DEFAULT_TRUSTSTORE_DIR/$WINDFIRE_ROOT_CA_CERTIFICATE${RESET}" >&2
+        exit 1
+    fi
+    if [ ! -f "$WINDFIRE_DEFAULT_KEYSTORE_DIR/$WINDFIRE_ROOT_CA_KEY" ]; then
+        echo -e "${RED}Error: key not found in keystore, skipping cleanup: $WINDFIRE_DEFAULT_KEYSTORE_DIR/$WINDFIRE_ROOT_CA_KEY${RESET}" >&2
+        exit 1
+    fi
+
+    rm -f "$WINDFIRE_ROOT_CA_CERTIFICATE" "$WINDFIRE_ROOT_CA_KEY" || { echo -e "${RED}Error: failed to delete Root CA certificate/key from ssl folder${RESET}" >&2; exit 1; }
+    echo -e "Windfire Root CA certificate ${BLU}$WINDFIRE_ROOT_CA_CERTIFICATE${RESET} and key ${BLU}$WINDFIRE_ROOT_CA_KEY${RESET} deleted from ssl folder"
+    echo
 }
 
 # ===== EXECUTION =====
