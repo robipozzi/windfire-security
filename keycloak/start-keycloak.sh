@@ -1,8 +1,8 @@
+#!/bin/bash
 source ../common.sh
 # ##### Variable section - START
 SCRIPT=start-keycloak.sh
 PLATFORM_OPTION=
-KEYSTORE_PASSWORD=
 KEYCLOAK_PASSWORD=
 DEFAULT_LOG_LEVEL=info
 LOG_LEVEL=
@@ -29,11 +29,9 @@ selectPlatform()
 		1)  selectLogLevel
 			$KEYCLOAK_HOME/bin/kc.sh start-dev --log-level=$LOG_LEVEL
 			;;
-		2)  selectLogLevel
-			if [ -z $KEYSTORE_PASSWORD ]; then 
-				inputKeystorePassword
-			fi
-			$KEYCLOAK_HOME/bin/kc.sh start --http-enabled=false --https-key-store-password=$KEYSTORE_PASSWORD --hostname=localhost --log-level=$LOG_LEVEL
+		2)  checkTLSFiles
+			selectLogLevel
+			$KEYCLOAK_HOME/bin/kc.sh start --http-enabled=false --https-certificate-file=$KEYCLOAK_CONF_TLS_DIR/$KEYCLOAK_CERT_NAME.crt --https-certificate-key-file=$KEYCLOAK_CONF_TLS_DIR/$KEYCLOAK_CERT_NAME.key --hostname=localhost --log-level=$LOG_LEVEL
 			;;
         3)  selectLogLevel
 			if [ -z $KEYCLOAK_PASSWORD ]; then 
@@ -71,13 +69,13 @@ selectLogLevel()
 	esac
 }
 
-inputKeystorePassword()
+checkTLSFiles()
 {
-	echo ${GREEN}Input Keystore Password : ${RESET}
-	read -s KEYSTORE_PASSWORD
-	if [ -z $KEYSTORE_PASSWORD ]; then
-		echo ${RED}No Keystore Password input${RESET}
-		inputKeystorePassword
+	# Keycloak server certificate and key are copied to $KEYCLOAK_CONF_TLS_DIR by setupKeycloakMode.sh (option 1)
+	if [ ! -f "$KEYCLOAK_CONF_TLS_DIR/$KEYCLOAK_CERT_NAME.crt" ] || [ ! -f "$KEYCLOAK_CONF_TLS_DIR/$KEYCLOAK_CERT_NAME.key" ]; then
+		echo -e "${RED}Error: Keycloak server certificate/key not found in $KEYCLOAK_CONF_TLS_DIR${RESET}" >&2
+		echo -e "${RED}Run setupKeycloakMode.sh and select option 1 (Enable Keycloak TLS) first${RESET}" >&2
+		exit 1
 	fi
 }
 

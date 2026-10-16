@@ -62,7 +62,7 @@ curlSelfSignedTLS()
 {
 	echo ${BLU}Running test on Keycloak HTTPS endpoint${RESET}
 	echo
-	CURL="curl -X POST https://$KEYCLOAK_SERVER_ADDRESS:$KEYCLOAK_TLS_SERVER_PORT/realms/$REALM_ID/protocol/openid-connect/token --cacert $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_PEM_TRUSTSTORE"
+	CURL="curl -X POST https://$KEYCLOAK_SERVER_ADDRESS:$KEYCLOAK_TLS_SERVER_PORT/realms/$REALM_ID/protocol/openid-connect/token --cacert $KEYCLOAK_DEFAULT_TRUSTSTORE_DIR/$KEYCLOAK_ROOT_CA_CERTIFICATE"
 	echo ${BLU}Running $CURL ...${RESET}
 	echo
 	$CURL \

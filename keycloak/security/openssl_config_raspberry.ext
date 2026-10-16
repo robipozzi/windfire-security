@@ -1,0 +1,9 @@
+basicConstraints = critical, CA:FALSE
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = raspberry01

@@ -4,7 +4,10 @@ keycloak/security/tls/*.crt
 keycloak/security/tls/*.jks
 keycloak/security/tls/*.pem
 keycloak/security/tls/*.csr
-keycloak/security/tls/server.keystore
+keycloak/security/tls/*.key
+keycloak/security/*.key
+keycloak/security/*.srl
+keycloak/security/*.key.sops.json
 server/windfire-security-server/
 server/*/__pycache__/
 server/__pycache__/

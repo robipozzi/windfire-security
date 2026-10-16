@@ -10,6 +10,7 @@
         - [Run Keycloak on Docker](#run-keycloak-on-docker)
         - [Test Keycloak functioning](#test-keycloak-functioning)
 - [Windfire Root CA and certificates](#windfire-root-ca-and-certificates)
+- [Encrypting secrets with sops](#encrypting-secrets-with-sops)
 - [Authentication Service](#authentication-service)
     - [First-time setup](#first-time-setup)
     - [Running the Authentication Service](#running-the-authentication-service)
@@ -94,26 +95,50 @@ Keycloak can be configured to run with TLS enabled, loading the required certifi
 
 I referred to official Keycloak documentation instructions *https://www.keycloak.org/server/enabletls* to enable TLS on Keycloak server.
 
-A convenient script **[setupTLS.sh](keycloak/security/setupTLS.sh)** is provided to generate a server keystore in *tls* subfolder.
+Keycloak's certificate is signed by a dedicated certificate authority, **Windfire Keycloak Root CA**, separate from the Windfire Root CA described in [Windfire Root CA and certificates](#windfire-root-ca-and-certificates). The design is in **[Keycloak_Root_CA_automation_plan.md](keycloak/security/Keycloak_Root_CA_automation_plan.md)**.
 
-The script currently uses keytool to generate a Java keystore; for the sake of simplicity I use a self signed certificate. 
+The script **[setupTLS.sh](keycloak/security/setupTLS.sh)** uses OpenSSL 3 (`brew install openssl@3`) and offers these functions:
 
-Once keytool command is launched, it asks for some info, my choices are something similar to the following
+1. **Create Windfire Keycloak Root CA** (run once): creates an RSA 4096, AES-256 passphrase protected key and a self-signed certificate (`CN=Windfire Keycloak Root CA, O=Windfire`, `CA:TRUE, pathlen:0`, valid 10 years). It refuses to overwrite an existing Root CA.
+   - certificate: `~/opt/keycloak/ssl/truststore/WindfireKeycloakRootCA.crt` (this is the file Keycloak clients must trust)
+   - private key: `~/opt/keycloak/ssl/keystore/WindfireKeycloakRootCA.key` (mode 0600)
+2. **Generate Keycloak server certificate**: asks for the environment and issues `windfire-keycloak.key` / `windfire-keycloak.crt` (RSA 3072, valid 397 days) signed by the Root CA, using SANs from **[openssl_config_localhost.ext](keycloak/security/openssl_config_localhost.ext)** or **[openssl_config_raspberry.ext](keycloak/security/openssl_config_raspberry.ext)**, then verifies the chain.
+   - Development/Test: written to the *tls* subfolder (gitignored)
+   - Production: written to `~/opt/keycloak/ssl/certs/raspberry`; the script prints how to install the files in `/etc/keycloak/tls` on raspberry01 and the two `https-certificate-*` lines for `keycloak.conf`
+3. **Check**: read-only. It prints the Root CA and server certificate details and exits 1 if the server certificate does not chain to the Root CA or expires within 30 days (`RENEW_BEFORE_DAYS`). Renew yearly with function 2.
+4. **Generate all**: 1 + 2.
 
-![](img/keytool_create_keystore.png)
+The function and the environment (1=Development, 2=Test, 3=Production) can be passed as arguments, e.g. `./setupTLS.sh 3 3` checks the production certificate. Settings such as `CA_DAYS`, `SERVER_DAYS` and `RENEW_BEFORE_DAYS` can be overridden as environment variables.
 
-Once the server keystore has been generated, run **[setupKeycloakMode.sh](keycloak/setupKeycloakMode.sh)**, which provides two options to enable and disable TLS respectively
+```bash
+cd keycloak/security
+./setupTLS.sh 1      # once: create Windfire Keycloak Root CA (asks for the Root CA passphrase)
+./setupTLS.sh 2 3    # issue the raspberry01 certificate (asks for the Root CA passphrase)
+./setupTLS.sh 3 3    # check the raspberry01 certificate
+```
+
+**IMPORTANT: the Root CA private key must not stay on the filesystem.** After functions 1 and 2 the script prints, in red, the steps and exact commands to follow:
+
+1. encrypt `WindfireKeycloakRootCA.key` with `sops`/`age` into `WindfireKeycloakRootCA.key.sops.json` and check that it decrypts back to the same key;
+2. save the `.sops.json` in the Password Manager;
+3. **delete both the private key and the `.sops.json` from the filesystem** (`rm -f ~/opt/keycloak/ssl/keystore/WindfireKeycloakRootCA.key*`).
+
+The key is needed again only to sign or renew a server certificate (function 2): restore it from the Password Manager to `~/opt/keycloak/ssl/keystore/WindfireKeycloakRootCA.key`, run the script, then delete it again.
+
+To enable TLS on a local Keycloak, first generate the localhost certificate with `./setupTLS.sh 2 1`, then run **[setupKeycloakMode.sh](keycloak/setupKeycloakMode.sh)**, which provides two options to enable and disable TLS respectively
 
 ![](img/Select_enable_disable_TLS.png)
 
 If *option 1* is selected, the script does the following:
 
-1. it copies server keystore to **<KEYCLOAK_HOME>/conf** folder
+1. it copies `windfire-keycloak.crt` and `windfire-keycloak.key` from the *tls* subfolder to the **<KEYCLOAK_HOME>/conf/tls** folder (and removes any old `server.keystore` from **<KEYCLOAK_HOME>/conf**)
 2. it runs **<KEYCLOAK_HOME>/bin/kc.sh build** command to rebuild Keycloak configuration and fully enable TLS
 
-Once everything has been properly setup, to run Keycloak with TLS enabled, we just need to select *option 2* when **[start-keycloak.sh](keycloak/start-keycloak.sh)** script is launched.
+*Option 2* removes the certificate and key from **<KEYCLOAK_HOME>/conf/tls**.
 
-Keycloak Admin console will respond on https://localhost:8443/admin. Since the certificate is self signed, browsers will complain but we can accept the risk and continue (**WARNING: a proper certificate signed by a Certification Authority must be used for production**).
+Once everything has been properly setup, to run Keycloak with TLS enabled, we just need to select *option 2* when **[start-keycloak.sh](keycloak/start-keycloak.sh)** script is launched: it starts Keycloak with `--https-certificate-file` and `--https-certificate-key-file` pointing at those PEM files (no keystore password is needed any more).
+
+Keycloak Admin console will respond on https://localhost:8443/admin. Browsers will complain unless `WindfireKeycloakRootCA.crt` is trusted on the machine; clients such as `curl` can use `--cacert ~/opt/keycloak/ssl/truststore/WindfireKeycloakRootCA.crt`.
 
 #### Run Keycloak on Docker
 In case Docker is selected, Keycloak will run with the following default parameters values:
@@ -152,6 +177,25 @@ cd ssl
 Re-run `generateServerCert.sh` any time a server cert expires or a new host is added; the Root CA itself only needs to be created once and reused.
 
 These are the certificates that `SSL_KEYFILE`/`SSL_CERTFILE` in the Authentication Service configuration point at (see below), and that the test scripts verify against.
+
+## Encrypting secrets with sops
+The [sops/](sops/) folder contains **[encrypt-sops.sh](sops/encrypt-sops.sh)**, a small utility to encrypt and decrypt any file (private keys, certificates, `.env` files, ...) with [sops](https://github.com/getsops/sops) and [age](https://github.com/FiloSottile/age) (`brew install sops age`). Files are encrypted in sops binary mode and stored as JSON, e.g. `WindfireKeycloakRootCA.key` → `WindfireKeycloakRootCA.key.sops.json`.
+
+The script asks for the age key file, defaulting to `~/.config/sops/age/keys.txt` (`DEFAULT_SOPS_AGE_KEY_FILE` in [common.sh](common.sh)); press Enter to accept it or type another path. The default can also be preset with the `SOPS_AGE_KEY_FILE` environment variable.
+
+- **1. Encrypt**: encrypts the file for the age key's public key, checks that the result decrypts back to the same bytes, then asks whether to delete the plain file.
+- **2. Decrypt**: decrypts the file with the age key. The output is readable by the owner only (mode 0600). The script reminds you to delete the output if it holds a secret.
+
+The function, input file and output file can be passed as arguments; the output file is optional:
+
+```bash
+cd sops
+./encrypt-sops.sh                                                                   # interactive menu
+./encrypt-sops.sh 1 ~/opt/keycloak/ssl/keystore/WindfireKeycloakRootCA.key           # -> WindfireKeycloakRootCA.key.sops.json
+./encrypt-sops.sh 2 ~/Downloads/WindfireKeycloakRootCA.key.sops.json ~/opt/keycloak/ssl/keystore/WindfireKeycloakRootCA.key
+```
+
+The script never overwrites an existing output file without asking, and removes a partial or unverified output if something fails.
 
 ## Authentication Service
 The [server/](server/) folder contains the Windfire Security Authentication Service: a FastAPI application that fronts Keycloak so that other Windfire services never need to talk to Keycloak directly.

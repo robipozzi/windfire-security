@@ -46,25 +46,21 @@ KEYCLOAK_USERNAME=admin
 
 # ===== KEYCLOAK SECURITY SETTINGS VARIABLES =====
 DEFAULT_TLS_DIR=$HOME/dev/windfire-security/keycloak/security/tls
-DEFAULT_KEYSTORE=server.keystore
-DEFAULT_KEYSTORE_ALIAS=keycloak
-DEFAULT_VALIDITY=1000
-DEFAULT_CSR=keycloak.csr
+KEYCLOAK_CONF_TLS_DIR=$KEYCLOAK_HOME/conf/tls
 
-# ===== KEYCLOAK CERTIFICATE AUTHORITY SETTINGS VARIABLES =====
-DEFAULT_CA_KEYSTORE=ca_keycloak.jks
-DEFAULT_CA_ALIAS=ca_keycloak
-DEFAULT_CACERT=ca_keycloak.cer
-DEFAULT_CACERT_PEM=ca_keycloak.pem
+# ===== KEYCLOAK ROOT CA VARIABLES =====
+KEYCLOAK_ROOT_CA_KEY="WindfireKeycloakRootCA.key"
+KEYCLOAK_ROOT_CA_CERTIFICATE="WindfireKeycloakRootCA.crt"
+KEYCLOAK_DEFAULT_KEYSTORE_DIR=$HOME/opt/keycloak/ssl/keystore
+KEYCLOAK_DEFAULT_TRUSTSTORE_DIR=$HOME/opt/keycloak/ssl/truststore
+KEYCLOAK_DEFAULT_CERTS_PROD_DIR=$HOME/opt/keycloak/ssl/certs/raspberry
 
-# ===== KEYCLOAK SIGNED CERTIFICATE SETTINGS VARIABLES =====
-DEFAULT_SERVER_CERTIFICATE=keycloak.cer
+# ===== KEYCLOAK SERVER CERTIFICATE VARIABLES =====
+KEYCLOAK_CERT_NAME="windfire-keycloak"
 
-# ===== KEYCLOAK TRUSTSTORE SETTINGS VARIABLES =====
-DEFAULT_TRUSTSTORE_DIR=$HOME/opt/keycloak/ssl/truststore
-DEFAULT_TRUSTSTORE=keycloak.truststore.jks
-DEFAULT_PKCS12_TRUSTSTORE=keycloak.truststore.p12
-DEFAULT_PEM_TRUSTSTORE=keycloak.truststore.pem
+# ===== SOPS VARIABLES =====
+DEFAULT_SOPS_AGE_KEY_FILE=$HOME/.config/sops/age/keys.txt
+SOPS_ENCRYPTED_SUFFIX=".sops.json"
 ###### Variable section - END
 
 ###### Function section - START

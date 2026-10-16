@@ -1,244 +1,441 @@
+#!/bin/bash
 source ../../common.sh
 
-# ##### Variable section - START
-SCRIPT=setupTLS.sh
-FUNCTION_CHOICE=
-FUNCTION=
-KEYSTORE=$1
-VALIDITY=$2
-TRUSTSTORE=$3
-# ##### Variable section - END
+# ***** Setup Keycloak TLS with Windfire Keycloak Root CA
+#
+# Usage: ./setupTLS.sh [function] [environment]
+#   function    : 1-4, as in the menu below (asked interactively if omitted)
+#   environment : 1=Development, 2=Test, 3=Production (asked interactively if omitted)
+#
+# Every setting in the variable section can be overridden by an environment
+# variable with the same name (e.g. RENEW_BEFORE_DAYS=60 ./setupTLS.sh 3 3).
 
-# ***** Function section - START
+# ===== VARIABLES =====
+SCRIPT=setupTLS.sh
+FUNCTION_CHOICE=$1
+FUNCTION=
+ENVIRONMENT_OPTION=$2
+DEFAULT_OPENSSL=openssl
+if command -v brew >/dev/null 2>&1 && [ -x "$(brew --prefix openssl@3 2>/dev/null)/bin/openssl" ]; then
+    DEFAULT_OPENSSL="$(brew --prefix openssl@3)/bin/openssl"
+fi
+OPENSSL=${OPENSSL:-$DEFAULT_OPENSSL}
+# Windfire Keycloak Root CA settings
+CA_CN=${CA_CN:-"Windfire Keycloak Root CA"}
+CA_ORG=${CA_ORG:-"Windfire"}
+CA_DAYS=${CA_DAYS:-3650}
+CA_KEY_BITS=${CA_KEY_BITS:-4096}
+ROOT_CA_KEY_PATH=$KEYCLOAK_DEFAULT_KEYSTORE_DIR/$KEYCLOAK_ROOT_CA_KEY
+ROOT_CA_CERTIFICATE_PATH=$KEYCLOAK_DEFAULT_TRUSTSTORE_DIR/$KEYCLOAK_ROOT_CA_CERTIFICATE
+ROOT_CA_IN_PROGRESS=false
+# Keycloak server certificate settings
+SERVER_DAYS=${SERVER_DAYS:-397}
+SERVER_KEY_BITS=${SERVER_KEY_BITS:-3072}
+RENEW_BEFORE_DAYS=${RENEW_BEFORE_DAYS:-30}
+KEYCLOAK_SERVER_KEY="$KEYCLOAK_CERT_NAME.key"
+KEYCLOAK_SERVER_CERTIFICATE="$KEYCLOAK_CERT_NAME.crt"
+KEYCLOAK_TLS_REMOTE_DIR=/etc/keycloak/tls
+KEYCLOAK_CONF_REMOTE=/etc/keycloak/keycloak.conf
+COMMON_NAME=
+OPENSSL_CONFIG_FILE=
+CERTS_DIR=
+CSR_FILE=
+
+# ===== MAIN FUNCTION =====
 main()
 {
-    mkdir -p $DEFAULT_TLS_DIR
+    trap cleanup EXIT
     $FUNCTION
 }
 
+# ===== FUNCTION SELECTION FUNCTION =====
 chooseFunction()
 {
-	echo ${GREEN}Choose function : ${RESET}
-    echo "${GREEN}1. Create our own Certification Authority${RESET}"
-    echo "${GREEN}2. Generate server keystore and certificate signing request${RESET}"
-    echo "${GREEN}3. Sign server certificate with CA${RESET}"
-    echo "${GREEN}4. Create client truststore${RESET}"
-    echo "${GREEN}5. Generate all TLS configuration${RESET}"
-    read FUNCTION_CHOICE
-	case $FUNCTION_CHOICE in
-		1)  FUNCTION=createCA
+    if [ -z "$FUNCTION_CHOICE" ]; then
+        echo -e "${GREEN}Choose function : ${RESET}"
+        echo -e "${GREEN}1. Create Windfire Keycloak Root CA${RESET}"
+        echo -e "${GREEN}2. Generate Keycloak server certificate signed by Windfire Keycloak Root CA${RESET}"
+        echo -e "${GREEN}3. Check Windfire Keycloak Root CA and Keycloak server certificate${RESET}"
+        echo -e "${GREEN}4. Generate all TLS configuration (1 + 2)${RESET}"
+        read FUNCTION_CHOICE
+    fi
+    case $FUNCTION_CHOICE in
+        1)  FUNCTION=createRootCA
             ;;
-        2)  FUNCTION=createTLSKeyAndCsr
-			;;
-		3)  FUNCTION=signCertificate
+        2)  FUNCTION=generateServerCertificate
             ;;
-        4)  FUNCTION=createClientTruststore
+        3)  FUNCTION=checkCertificates
             ;;
-        5)  FUNCTION=createTLSConfiguration
+        4)  FUNCTION=createTLSConfiguration
             ;;
-		*) 	printf "\n${RED}No valid option selected${RESET}\n"
-			chooseFunction
-			;;
-	esac
+        *)  printf "\n${RED}No valid option selected${RESET}\n"
+            FUNCTION_CHOICE=
+            chooseFunction
+            ;;
+    esac
 }
 
-createCA()
+# ===== CREATE WINDFIRE KEYCLOAK ROOT CA FUNCTION =====
+createRootCA()
 {
-    echo ${BLU}****************************************************${RESET}
-    echo ${BLU}***** Generate our own Certification Authority *****${RESET}
-    echo ${BLU}****************************************************${RESET}
-    echo 
-
-    ###########################################################################################################################################
-    # A certificate authority (CA) is responsible for signing certificates. In this case we will be our own Certificate Authority.            #
-    #                                                                                                                                         #
-    # With these steps done we can now generate our own CA that will be used to sign certificates later.                                      #
-    # The CA is simply a public/private key pair and certificate that is signed by itself, and is only intended to sign other certificates.   #
-    ###########################################################################################################################################
-    echo ${BLU}***** Creating $DEFAULT_CA_KEYSTORE CA keystore containing a key pair that will be used to sign $DEFAULT_CACERT CA certificate ... ${RESET}
-
-    CMD_KEYSTORE_RUN="keytool -genkeypair -keyalg RSA -keysize 2048 -validity $DEFAULT_VALIDITY -keystore $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE -alias $DEFAULT_CA_ALIAS"
-    echo ${CYAN}Generating CA keystore using following command:${RESET} ${GREEN}$CMD_KEYSTORE_RUN${RESET}
-    $CMD_KEYSTORE_RUN
-    echo
-    
-    CMD_CERTIFICATE_RUN="keytool -exportcert -keystore $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE -alias $DEFAULT_CA_ALIAS -file $DEFAULT_TLS_DIR/$DEFAULT_CACERT"
-    echo ${CYAN}Generating $DEFAULT_CACERT CA certificate using following command:${RESET} ${GREEN}$CMD_CERTIFICATE_RUN${RESET}
-    $CMD_CERTIFICATE_RUN
+    echo -e "${BLU}********************************************${RESET}"
+    echo -e "${BLU}***** Create Windfire Keycloak Root CA *****${RESET}"
+    echo -e "${BLU}********************************************${RESET}"
     echo
 
-    CMD_CERTIFICATE_RUN="openssl x509 -inform der -in $DEFAULT_TLS_DIR/$DEFAULT_CACERT -out $DEFAULT_TLS_DIR/$DEFAULT_CACERT_PEM"
-    echo ${CYAN}Converting CA certificate to PEM format using following command:${RESET} ${GREEN}$CMD_CERTIFICATE_RUN${RESET}
-    $CMD_CERTIFICATE_RUN
-    echo
+    checkOpenssl
+
+    # Replacing a Root CA is a deliberate manual act: never overwrite an existing one
+    if [ -f "$ROOT_CA_CERTIFICATE_PATH" ] || [ -f "$ROOT_CA_KEY_PATH" ] || [ -f "$ROOT_CA_KEY_PATH.sops.json" ]; then
+        echo -e "${RED}Error: Windfire Keycloak Root CA already exists, refusing to overwrite it:${RESET}" >&2
+        echo -e "${RED}  certificate : ${BLU}$ROOT_CA_CERTIFICATE_PATH${RESET}" >&2
+        echo -e "${RED}  key         : ${BLU}$ROOT_CA_KEY_PATH${RESET}" >&2
+        echo -e "${RED}Move the existing files away manually if you really want to create a new Root CA.${RESET}" >&2
+        exit 1
+    fi
+
+    mkdir -p "$KEYCLOAK_DEFAULT_KEYSTORE_DIR" "$KEYCLOAK_DEFAULT_TRUSTSTORE_DIR" \
+        || { echo -e "${RED}Error: failed to create directories $KEYCLOAK_DEFAULT_KEYSTORE_DIR and $KEYCLOAK_DEFAULT_TRUSTSTORE_DIR${RESET}" >&2; exit 1; }
+
+    # From here on, partial files are removed by cleanup() if anything fails or the script is interrupted
+    ROOT_CA_IN_PROGRESS=true
+
+    # 1) Create Windfire Keycloak Root CA private key
+    createRootCAPrivateKey
+
+    # 2) Self-sign Windfire Keycloak Root CA certificate
+    signRootCA
+
+    ROOT_CA_IN_PROGRESS=false
+
+    # 3) Print Root CA details and remind to protect the private key
+    printRootCASummary
 }
 
-createTLSKeyAndCsr()
+# ===== CREATE WINDFIRE KEYCLOAK ROOT CA PRIVATE KEY FUNCTION =====
+createRootCAPrivateKey()
 {
-    echo ${BLU}*****************************************************************${RESET}
-    echo ${BLU}***** Generate TLS keystore and Certificate Signing Request *****${RESET}
-    echo ${BLU}*****************************************************************${RESET}
-    echo
-
-    ##################################################################################################
-    # The first step of deploying Keycloak with TLS support is to generate a public/private keypair. #
-    # We will use Java's keytool command for this task.                                              #
-    ##################################################################################################
-    echo ${BLU}***** Creating new keystore with alias $DEFAULT_KEYSTORE_ALIAS ...${RESET}
-    if [ -z $KEYSTORE ]; then 
-		inputKeystore
-	fi
-    if [ -z $VALIDITY ]; then 
-		inputValidity
-	fi
-    CMD_RUN="keytool -genkeypair -keystore $DEFAULT_TLS_DIR/$KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -keyalg RSA -keysize 2048 -validity $DEFAULT_VALIDITY"
-    echo ${CYAN}Creating keystore using following command:${RESET} ${GREEN}$CMD_RUN${RESET}
-    $CMD_RUN
-    echo
-
-    ##########################################################################################################################################
-    # To obtain a certificate that can be used with the private key that was just created a certificate signing request needs to be created. #
-    # This signing request, when signed by a trusted CA results in the actual certificate which can then be installed in the keystore and    #
-    # used for authentication purposes.                                                                                                      #
-    ##########################################################################################################################################
-    echo ${BLU}***** Generating $DEFAULT_CSR Certificate Signing Request from $KEYSTORE keystore ...${RESET}
-    CMD_RUN="keytool -certreq -keystore $DEFAULT_TLS_DIR/$KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -file $DEFAULT_TLS_DIR/$DEFAULT_CSR"
-    echo ${CYAN}Generating CSR using following command:${RESET} ${GREEN}$CMD_RUN${RESET}
-    $CMD_RUN
+    echo -e "Generating Windfire Keycloak Root CA private key (RSA $CA_KEY_BITS, AES-256 encrypted) ..."
+    echo -e "You will be asked for the Root CA private key passphrase"
+    ( umask 077 && "$OPENSSL" genrsa -aes256 -out "$ROOT_CA_KEY_PATH" "$CA_KEY_BITS" ) \
+        || { echo -e "${RED}Error: failed to generate Root CA private key${RESET}" >&2; exit 1; }
+    chmod 600 "$ROOT_CA_KEY_PATH"
+    echo -e "Windfire Keycloak Root CA private key ${BLU}$ROOT_CA_KEY_PATH${RESET} generated"
     echo
 }
 
-signCertificate()
+# ===== SELF-SIGN WINDFIRE KEYCLOAK ROOT CA CERTIFICATE FUNCTION =====
+signRootCA()
 {
-    echo ${BLU}***************************************${RESET}
-    echo ${BLU}***** Sign the server certificate *****${RESET}
-    echo ${BLU}***************************************${RESET}
-    echo 
-
-    ############################################################################################
-    # Create a server certificate signing the Certificate Signing Request using CA certificate #
-    ############################################################################################
-    echo ${BLU}***** Signing $DEFAULT_SERVER_CERTIFICATE server certificate using CA certificate within $DEFAULT_CA_KEYSTORE CA keystore ... ${RESET}
-    CMD_RUN="keytool -gencert -keystore $DEFAULT_TLS_DIR/$DEFAULT_CA_KEYSTORE -alias $DEFAULT_CA_ALIAS -infile $DEFAULT_TLS_DIR/$DEFAULT_CSR -outfile $DEFAULT_TLS_DIR/$DEFAULT_SERVER_CERTIFICATE -validity $DEFAULT_VALIDITY"
-    echo ${CYAN}Signing certificate with CA using following command:${RESET} ${GREEN}$CMD_RUN${RESET}
-    $CMD_RUN
-    echo 
-
-    #######################################
-    # Import CA certificate into keystore #
-    #######################################
-    echo ${BLU}***** Importing $DEFAULT_CACERT CA certificate into server keystore ... ${RESET}
-    if [ -z $KEYSTORE ]; then 
-		inputKeystore
-	fi
-    CMD_RUN="keytool -import -keystore $DEFAULT_TLS_DIR/$KEYSTORE -file $DEFAULT_TLS_DIR/$DEFAULT_CACERT -alias $DEFAULT_CA_ALIAS"
-    echo ${CYAN}Importing CA certificate in keystore using following command:${RESET} ${GREEN}$CMD_RUN${RESET}
-    $CMD_RUN
-    echo 
-    
-    ######################################################
-    # Import the signed server certificate into keystore #
-    ######################################################
-    echo ${BLU}***** Importing $DEFAULT_SERVER_CERTIFICATE signed server certificate into $DEFAULT_KEYSTORE keystore ... ${RESET}
-    CMD_RUN="keytool -importcert -keystore $DEFAULT_TLS_DIR/$DEFAULT_KEYSTORE -alias $DEFAULT_KEYSTORE_ALIAS -file $DEFAULT_TLS_DIR/$DEFAULT_SERVER_CERTIFICATE"
-    echo ${CYAN}Importing signed certificate into keystore using following command:${RESET} ${GREEN}$CMD_RUN${RESET}
-    $CMD_RUN
+    echo -e "Self signing Windfire Keycloak Root CA certificate (you will be asked for the Root CA private key passphrase) ..."
+    "$OPENSSL" req -x509 -new -key "$ROOT_CA_KEY_PATH" -sha256 -days "$CA_DAYS" \
+            -out "$ROOT_CA_CERTIFICATE_PATH" \
+            -subj "/O=${CA_ORG}/CN=${CA_CN}" \
+            -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
+            -addext "keyUsage=critical,keyCertSign,cRLSign" \
+            -addext "subjectKeyIdentifier=hash" \
+        || { echo -e "${RED}Error: failed to self-sign Root CA certificate${RESET}" >&2; exit 1; }
+    chmod 644 "$ROOT_CA_CERTIFICATE_PATH"
+    echo -e "Windfire Keycloak Root CA certificate ${BLU}$ROOT_CA_CERTIFICATE_PATH${RESET} self signed"
     echo
 }
 
-createClientTruststore()
+# ===== PRINT WINDFIRE KEYCLOAK ROOT CA SUMMARY FUNCTION =====
+printRootCASummary()
 {
-    echo ${BLU}**************************************${RESET}
-    echo ${BLU}***** Generate client truststore *****${RESET}
-    echo ${BLU}**************************************${RESET}
-    echo 
+    echo -e "${BLU}***** Windfire Keycloak Root CA created *****${RESET}"
+    echo -e "Certificate : ${BLU}$ROOT_CA_CERTIFICATE_PATH${RESET}"
+    echo -e "Private key : ${BLU}$ROOT_CA_KEY_PATH${RESET}"
+    "$OPENSSL" x509 -in "$ROOT_CA_CERTIFICATE_PATH" -noout -subject -enddate -fingerprint -sha256
+    echo
+    printDeleteRootCAKeyReminder
+}
 
-    ###########################################################################################################################
-    # The next step is to add the generated CA to the **clients' truststore** so that the clients can trust this CA.          #
-    # In contrast to the keystore in step 1, the truststore of a client stores all the certificates that                      #
-    # the client should trust.                                                                                                #
-    #                                                                                                                         #
-    # Importing a certificate into one's truststore also means trusting all certificates that are signed by that certificate. #
-    # This attribute is called the chain of trust.                                                                            #
-    ###########################################################################################################################
-    echo ${BLU}***** Importing $DEFAULT_CACERT_PEM Self CA certificate into JKS formatted truststore ... ${RESET}
-    if [ -z $TRUSTSTORE ]; then 
-		inputTruststore
-	fi
-    CMD_RUN="keytool -importcert -file $DEFAULT_TLS_DIR/$DEFAULT_CACERT_PEM -alias $DEFAULT_CA_ALIAS -keystore $DEFAULT_TRUSTSTORE_DIR/$TRUSTSTORE"
-    echo ${CYAN}Importing Self CA certificate into client truststore using following command:${RESET} ${GREEN}$CMD_RUN${RESET}
-    $CMD_RUN
+# ===== GENERATE KEYCLOAK SERVER CERTIFICATE FUNCTION =====
+generateServerCertificate()
+{
+    echo -e "${BLU}************************************************************************************${RESET}"
+    echo -e "${BLU}***** Generate Keycloak server certificate signed by Windfire Keycloak Root CA *****${RESET}"
+    echo -e "${BLU}************************************************************************************${RESET}"
     echo
 
-    echo ${BLU}***** Importing $DEFAULT_KEYSTORE server certificate self signed with $DEFAULT_CACERT_PEM CA certificate into $TRUSTSTORE JKS formatted truststore ... ${RESET}   
-    CMD_RUN="keytool -importkeystore -srckeystore $DEFAULT_TLS_DIR/$DEFAULT_KEYSTORE -destkeystore $DEFAULT_TRUSTSTORE_DIR/$TRUSTSTORE"
-    echo ${CYAN}Importing self signed server certificate into client truststore using following command:${RESET} ${GREEN}$CMD_RUN${RESET}
-    $CMD_RUN
-    echo
-    
-    echo ${BLU}***** Converting $TRUSTSTORE JKS truststore to $DEFAULT_PKCS12_TRUSTSTORE PKCS12 truststore for non Java clients ... ${RESET}
-    CMD_PKCS_RUN="keytool -importkeystore -srckeystore $DEFAULT_TRUSTSTORE_DIR/$TRUSTSTORE -destkeystore $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_PKCS12_TRUSTSTORE -srcstoretype JKS -deststoretype PKCS12"
-    echo ${CYAN}Converting JKS truststore to PKCS12 format using following command:${RESET} ${GREEN}$CMD_PKCS_RUN${RESET}
-    $CMD_PKCS_RUN
-    echo
-    
-    echo ${BLU}***** Converting $DEFAULT_PKCS12_TRUSTSTORE PKCS12 truststore to $DEFAULT_PEM_TRUSTSTORE PEM truststore for non Java clients ... ${RESET}
-    CMD_PEM_RUN="openssl pkcs12 -in $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_PKCS12_TRUSTSTORE -out $DEFAULT_TRUSTSTORE_DIR/$DEFAULT_PEM_TRUSTSTORE -nodes"
-    echo ${CYAN}Converting PKCS12 truststore to PEM format using following command:${RESET} ${GREEN}$CMD_PEM_RUN${RESET}
-    $CMD_PEM_RUN
+    checkOpenssl
+    selectCertificateEnvironment
+    checkRootCA
+
+    mkdir -p "$CERTS_DIR" || { echo -e "${RED}Error: failed to create directory: $CERTS_DIR${RESET}" >&2; exit 1; }
+    confirmOverwrite
+
+    # 1) Create server private key
+    createServerPrivateKey
+
+    # 2) Create server CSR
+    createServerCsr
+
+    # 3) Sign server certificate with Windfire Keycloak Root CA
+    signServerCertificate
+
+    # 4) Verify server certificate chains to Windfire Keycloak Root CA
+    verifyServerCertificate
+
+    # 5) Print how to install the certificate on Keycloak server
+    printInstallInstructions
+
+    # 6) Remind to delete the Root CA private key, restored from the Password Manager for signing
+    printDeleteRootCAKeyReminder
+}
+
+# ===== CREATE SERVER PRIVATE KEY FUNCTION =====
+createServerPrivateKey()
+{
+    echo -e "Generating Keycloak server private key (RSA $SERVER_KEY_BITS) in $CERTS_DIR directory ..."
+    ( umask 077 && "$OPENSSL" genrsa -out "$CERTS_DIR/$KEYCLOAK_SERVER_KEY" "$SERVER_KEY_BITS" ) \
+        || { echo -e "${RED}Error: failed to generate server private key${RESET}" >&2; exit 1; }
+    chmod 600 "$CERTS_DIR/$KEYCLOAK_SERVER_KEY"
+    echo -e "Keycloak server private key ${BLU}$CERTS_DIR/$KEYCLOAK_SERVER_KEY${RESET} generated"
     echo
 }
 
+# ===== SERVER CSR CREATE FUNCTION =====
+createServerCsr()
+{
+    echo "Creating Keycloak server CSR ..."
+    CSR_FILE="$(mktemp)"
+    "$OPENSSL" req -new -key "$CERTS_DIR/$KEYCLOAK_SERVER_KEY" -out "$CSR_FILE" -subj "/O=${CA_ORG}/CN=${COMMON_NAME}" \
+        || { echo -e "${RED}Error: failed to create server CSR${RESET}" >&2; exit 1; }
+    echo "Keycloak server CSR created"
+    echo
+}
+
+# ===== SERVER CERTIFICATE SIGNING FUNCTION =====
+signServerCertificate()
+{
+    # SANs and extensions come only from the openssl config file, never from the CSR.
+    # A random serial is used, so no serial (.srl) file is kept next to the Root CA.
+    echo "Signing Keycloak server certificate with Windfire Keycloak Root CA (you will be asked for the Root CA private key passphrase) ..."
+    echo "  --> Using $OPENSSL_CONFIG_FILE openssl configuration file ..."
+    if ! "$OPENSSL" x509 -req -in "$CSR_FILE" -CA "$ROOT_CA_CERTIFICATE_PATH" -CAkey "$ROOT_CA_KEY_PATH" \
+                -set_serial "0x$("$OPENSSL" rand -hex 16)" \
+                -out "$CERTS_DIR/$KEYCLOAK_SERVER_CERTIFICATE" -days "$SERVER_DAYS" -sha256 \
+                -extfile "$OPENSSL_CONFIG_FILE"; then
+        echo -e "${RED}Error: failed to sign server certificate${RESET}" >&2
+        rm -f "$CERTS_DIR/$KEYCLOAK_SERVER_CERTIFICATE" "$CERTS_DIR/$KEYCLOAK_SERVER_KEY"
+        exit 1
+    fi
+    chmod 644 "$CERTS_DIR/$KEYCLOAK_SERVER_CERTIFICATE"
+    echo -e "Keycloak server certificate ${BLU}$CERTS_DIR/$KEYCLOAK_SERVER_CERTIFICATE${RESET} signed"
+    echo
+}
+
+# ===== SERVER CERTIFICATE VERIFICATION FUNCTION =====
+verifyServerCertificate()
+{
+    echo "Verifying Keycloak server certificate against Windfire Keycloak Root CA ..."
+    "$OPENSSL" verify -CAfile "$ROOT_CA_CERTIFICATE_PATH" "$CERTS_DIR/$KEYCLOAK_SERVER_CERTIFICATE" \
+        || { echo -e "${RED}Error: server certificate is not signed by Windfire Keycloak Root CA ${BLU}$ROOT_CA_CERTIFICATE_PATH${RESET}" >&2; exit 1; }
+
+    CERT_PUBKEY=$("$OPENSSL" x509 -in "$CERTS_DIR/$KEYCLOAK_SERVER_CERTIFICATE" -noout -pubkey)
+    KEY_PUBKEY=$("$OPENSSL" pkey -in "$CERTS_DIR/$KEYCLOAK_SERVER_KEY" -pubout)
+    if [ "$CERT_PUBKEY" != "$KEY_PUBKEY" ]; then
+        echo -e "${RED}Error: server certificate and private key do not match${RESET}" >&2
+        exit 1
+    fi
+
+    "$OPENSSL" x509 -in "$CERTS_DIR/$KEYCLOAK_SERVER_CERTIFICATE" -noout -subject -issuer -ext subjectAltName,extendedKeyUsage -enddate
+    echo -e "Keycloak server certificate ${BLU}$CERTS_DIR/$KEYCLOAK_SERVER_CERTIFICATE${RESET} verified"
+    echo
+}
+
+# ===== PRINT INSTALL INSTRUCTIONS FUNCTION =====
+printInstallInstructions()
+{
+    if [ "$ENVIRONMENT" != "prod" ]; then
+        return
+    fi
+    echo -e "${BLU}***** Next steps on $COMMON_NAME *****${RESET}"
+    echo -e "Copy the files to $COMMON_NAME and install them in ${BLU}$KEYCLOAK_TLS_REMOTE_DIR${RESET}:"
+    echo "    scp \"$CERTS_DIR/$KEYCLOAK_SERVER_CERTIFICATE\" \"$CERTS_DIR/$KEYCLOAK_SERVER_KEY\" \"$ROOT_CA_CERTIFICATE_PATH\" pi@$COMMON_NAME:/tmp/"
+    echo "    sudo install -o root -g keycloak -m 0640 /tmp/$KEYCLOAK_SERVER_CERTIFICATE /tmp/$KEYCLOAK_SERVER_KEY $KEYCLOAK_TLS_REMOTE_DIR/"
+    echo "    sudo install -o root -g keycloak -m 0644 /tmp/$KEYCLOAK_ROOT_CA_CERTIFICATE $KEYCLOAK_TLS_REMOTE_DIR/"
+    echo "    shred -u /tmp/$KEYCLOAK_SERVER_KEY && rm -f /tmp/$KEYCLOAK_SERVER_CERTIFICATE /tmp/$KEYCLOAK_ROOT_CA_CERTIFICATE"
+    echo -e "and check that ${BLU}$KEYCLOAK_CONF_REMOTE${RESET} contains:"
+    echo "    https-certificate-file=$KEYCLOAK_TLS_REMOTE_DIR/$KEYCLOAK_SERVER_CERTIFICATE"
+    echo "    https-certificate-key-file=$KEYCLOAK_TLS_REMOTE_DIR/$KEYCLOAK_SERVER_KEY"
+    echo -e "${YELLOW}Trust $KEYCLOAK_ROOT_CA_CERTIFICATE on every Keycloak client before restarting Keycloak.${RESET}"
+    echo
+}
+
+# ===== CHECK CERTIFICATES FUNCTION =====
+checkCertificates()
+{
+    echo -e "${BLU}***************************************************************************${RESET}"
+    echo -e "${BLU}***** Check Windfire Keycloak Root CA and Keycloak server certificate *****${RESET}"
+    echo -e "${BLU}***************************************************************************${RESET}"
+    echo
+
+    checkOpenssl
+    selectCertificateEnvironment
+    CHECK_FAILED=false
+
+    if [ ! -f "$ROOT_CA_CERTIFICATE_PATH" ]; then
+        echo -e "${RED}Error: Windfire Keycloak Root CA certificate not found: ${BLU}$ROOT_CA_CERTIFICATE_PATH${RESET}" >&2
+        exit 1
+    fi
+    echo -e "Windfire Keycloak Root CA ${BLU}$ROOT_CA_CERTIFICATE_PATH${RESET}"
+    "$OPENSSL" x509 -in "$ROOT_CA_CERTIFICATE_PATH" -noout -subject -issuer -enddate
+    echo "Days left: $(daysLeft "$ROOT_CA_CERTIFICATE_PATH")"
+    echo
+
+    SERVER_CERTIFICATE_PATH=$CERTS_DIR/$KEYCLOAK_SERVER_CERTIFICATE
+    if [ ! -f "$SERVER_CERTIFICATE_PATH" ]; then
+        echo -e "${RED}Error: Keycloak server certificate not found: ${BLU}$SERVER_CERTIFICATE_PATH${RESET}" >&2
+        exit 1
+    fi
+    echo -e "Keycloak server certificate ${BLU}$SERVER_CERTIFICATE_PATH${RESET}"
+    "$OPENSSL" x509 -in "$SERVER_CERTIFICATE_PATH" -noout -subject -issuer -ext subjectAltName -enddate
+    echo "Days left: $(daysLeft "$SERVER_CERTIFICATE_PATH")"
+    echo
+
+    if ! "$OPENSSL" verify -CAfile "$ROOT_CA_CERTIFICATE_PATH" "$SERVER_CERTIFICATE_PATH" >/dev/null 2>&1; then
+        echo -e "${RED}FAILED: server certificate does not chain to Windfire Keycloak Root CA${RESET}"
+        CHECK_FAILED=true
+    else
+        echo -e "${GREEN}OK: server certificate chains to Windfire Keycloak Root CA${RESET}"
+    fi
+    if ! "$OPENSSL" x509 -in "$SERVER_CERTIFICATE_PATH" -noout -checkend $((RENEW_BEFORE_DAYS * 86400)) >/dev/null; then
+        echo -e "${RED}FAILED: server certificate expires within $RENEW_BEFORE_DAYS days, renew it with option 2${RESET}"
+        CHECK_FAILED=true
+    else
+        echo -e "${GREEN}OK: server certificate does not expire within $RENEW_BEFORE_DAYS days${RESET}"
+    fi
+    echo
+
+    if [ "$CHECK_FAILED" = true ]; then
+        exit 1
+    fi
+}
+
+# ===== GENERATE ALL TLS CONFIGURATION FUNCTION =====
 createTLSConfiguration()
 {
-    createCA
-    createTLSKeyAndCsr
-    signCertificate
-    createClientTruststore
+    createRootCA
+    generateServerCertificate
 }
 
-inputKeystore()
+# ===== HELPER FUNCTIONS =====
+printDeleteRootCAKeyReminder()
 {
-    ###### Set keystore name
-    if [ "$KEYSTORE" != "" ]; then
-        echo Keystore is set to $KEYSTORE
+    echo -e "${RED}*****************************************************************************${RESET}"
+    echo -e "${RED}***** IMPORTANT: DELETE THE ROOT CA PRIVATE KEY FROM THE FILESYSTEM     *****${RESET}"
+    echo -e "${RED}*****************************************************************************${RESET}"
+    echo -e "${RED}The Windfire Keycloak Root CA private key is still on the filesystem:${RESET}"
+    echo -e "    ${BLU}$ROOT_CA_KEY_PATH${RESET}"
+    echo -e "${RED}It must NOT stay there: encrypt it, save it in the Password Manager, then delete it.${RESET}"
+    echo "  Steps 1, 2 and 4 can be done in one go with the sops utility of this repository:"
+    echo "       (cd ../../sops && ./encrypt-sops.sh 1 \"$ROOT_CA_KEY_PATH\")"
+    echo "  or manually:"
+    echo "  1) Encrypt it with sops/age (skip if the Password Manager already holds the current .sops.json):"
+    echo "       sops -e --age \"\$(age-keygen -y ~/.config/sops/age/keys.txt)\" --input-type binary --output-type json \\"
+    echo "            \"$ROOT_CA_KEY_PATH\" > \"$ROOT_CA_KEY_PATH.sops.json\""
+    echo "  2) Check that it decrypts back to the same key:"
+    echo "       sops -d --input-type json --output-type binary \"$ROOT_CA_KEY_PATH.sops.json\" | cmp - \"$ROOT_CA_KEY_PATH\""
+    echo "  3) Save $KEYCLOAK_ROOT_CA_KEY.sops.json in the Password Manager"
+    echo "  4) Delete the private key and the .sops.json from the filesystem:"
+    echo "       rm -f \"$ROOT_CA_KEY_PATH\" \"$ROOT_CA_KEY_PATH.sops.json\""
+    echo -e "${YELLOW}The key is needed again only to sign or renew a Keycloak server certificate: restore it from the${RESET}"
+    echo -e "${YELLOW}Password Manager to the same path, run this script, then delete it again.${RESET}"
+    echo
+}
+
+checkOpenssl()
+{
+    if ! command -v "$OPENSSL" >/dev/null 2>&1; then
+        echo -e "${RED}Error: openssl not found: $OPENSSL (install it with: brew install openssl@3)${RESET}" >&2
+        exit 1
+    fi
+    if "$OPENSSL" version | grep -q LibreSSL; then
+        echo -e "${RED}Error: $OPENSSL is LibreSSL, OpenSSL 3 is required (brew install openssl@3)${RESET}" >&2
+        exit 1
+    fi
+    echo -e "Using ${BOLD}$("$OPENSSL" version)${RESET} ($OPENSSL)"
+    echo
+}
+
+checkRootCA()
+{
+    if [ ! -f "$ROOT_CA_CERTIFICATE_PATH" ] || [ ! -f "$ROOT_CA_KEY_PATH" ]; then
+        echo -e "${RED}Error: Windfire Keycloak Root CA not found (expected ${BLU}$ROOT_CA_CERTIFICATE_PATH${RED} and ${BLU}$ROOT_CA_KEY_PATH${RED}).${RESET}" >&2
+        echo -e "${RED}Run option 1 (Create Windfire Keycloak Root CA) first, or restore the decrypted key from the password manager.${RESET}" >&2
+        exit 1
+    fi
+    echo -e "Using Windfire Keycloak Root CA ${BLU}$ROOT_CA_CERTIFICATE_PATH${RESET}"
+    echo
+}
+
+selectCertificateEnvironment()
+{
+    if [ -n "$ENVIRONMENT_OPTION" ]; then
+        ENVIRONMENT_SELECTION=$ENVIRONMENT_OPTION
+        setEnvironment
     else
-        echo ${GREEN}Enter keystore - leaving blank will set keystore to ${RESET}${MAGENTA}$DEFAULT_KEYSTORE : ${RESET}
-        read KEYSTORE
-        if [ "$KEYSTORE" == "" ]; then
-            KEYSTORE=$DEFAULT_KEYSTORE
+        selectEnvironment
+    fi
+    echo -e "Environment selected is ${BOLD}$ENVIRONMENT${RESET}"
+    case "$ENVIRONMENT" in
+        dev|staging)
+            OPENSSL_CONFIG_FILE="openssl_config_localhost.ext"
+            CERTS_DIR=$DEFAULT_TLS_DIR
+            COMMON_NAME="localhost"
+            ;;
+        prod)
+            OPENSSL_CONFIG_FILE="openssl_config_raspberry.ext"
+            CERTS_DIR=$KEYCLOAK_DEFAULT_CERTS_PROD_DIR
+            COMMON_NAME="raspberry01"
+            ;;
+        *)
+            echo -e "${RED}Error: Invalid environment '$ENVIRONMENT'${RESET}"
+            echo "Valid options: dev, staging, prod"
+            exit 1
+            ;;
+    esac
+    echo -e "Openssl config file set to ${BOLD}$OPENSSL_CONFIG_FILE${RESET}, certificates directory set to ${BOLD}$CERTS_DIR${RESET}"
+    echo
+}
+
+confirmOverwrite()
+{
+    if [ -f "$CERTS_DIR/$KEYCLOAK_SERVER_CERTIFICATE" ] || [ -f "$CERTS_DIR/$KEYCLOAK_SERVER_KEY" ]; then
+        echo -e "${YELLOW}Keycloak server certificate/key already exist in ${BLU}$CERTS_DIR${RESET}"
+        read -r -p "Overwrite them? [y/N]: " OVERWRITE
+        if [[ ! "$OVERWRITE" =~ ^[Yy]$ ]]; then
+            echo "Nothing changed"
+            exit 0
         fi
     fi
 }
 
-inputValidity()
+daysLeft()
 {
-    ###### Set validity days
-    if [ "$VALIDITY" != "" ]; then
-        echo Validity days are set to $VALIDITY
+    END_DATE=$("$OPENSSL" x509 -in "$1" -noout -enddate | cut -d= -f2)
+    if date -j >/dev/null 2>&1; then
+        END_EPOCH=$(date -j -f "%b %e %T %Y %Z" "$END_DATE" +%s)
     else
-        echo ${GREEN}Enter keystore validity days - leaving blank will set validaty days to ${RESET}${MAGENTA}$DEFAULT_VALIDITY : ${RESET}
-        read VALIDITY
-        if [ "$VALIDITY" == "" ]; then
-            VALIDITY=$DEFAULT_VALIDITY
-        fi
+        END_EPOCH=$(date -d "$END_DATE" +%s)
     fi
+    echo $(( (END_EPOCH - $(date +%s)) / 86400 ))
 }
 
-inputTruststore()
+cleanup()
 {
-    ###### Set truststore name
-    if [ "$TRUSTSTORE" != "" ]; then
-        echo Truststore is set to $TRUSTSTORE
-    else
-        echo ${GREEN}Enter truststore - leaving blank will set truststore to ${RESET}${MAGENTA}$DEFAULT_TRUSTSTORE : ${RESET}
-        read TRUSTSTORE
-        if [ "$TRUSTSTORE" == "" ]; then
-            TRUSTSTORE=$DEFAULT_TRUSTSTORE
-        fi
+    if [ -n "$CSR_FILE" ]; then
+        rm -f "$CSR_FILE"
+    fi
+    # Remove a partially created Root CA, so that a new run is not refused
+    if [ "$ROOT_CA_IN_PROGRESS" = true ]; then
+        echo -e "${RED}Root CA creation did not complete, removing partial files${RESET}" >&2
+        rm -f "$ROOT_CA_KEY_PATH" "$ROOT_CA_CERTIFICATE_PATH"
     fi
 }
-# ***** Function section - END
 
 # ##############################################
 # #################### MAIN ####################

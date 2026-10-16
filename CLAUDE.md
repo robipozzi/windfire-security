@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repository is
 
-Windfire Security provides the authentication/authorization infrastructure for the Windfire application suite. It has three parts:
+Windfire Security provides the authentication/authorization infrastructure for the Windfire application suite. It has four parts:
 
 1. **`server/`** — a Python FastAPI "Windfire Security Authentication Service" that fronts Keycloak. Other Windfire services never talk to Keycloak directly; they call this service's `/v1/security/auth` and `/v1/security/verify` endpoints.
 2. **`keycloak/`** — shell scripts to run Keycloak itself (localhost, Docker, or Raspberry Pi) and to configure TLS on the Keycloak server.
 3. **`ssl/`** — shell scripts to generate the Windfire self-signed Root CA and per-host server certificates used across the whole suite (not just this service).
+4. **`sops/`** — `encrypt-sops.sh`, a menu-driven utility to encrypt/decrypt any file with sops + age (binary mode stored as `.sops.json`, age key file defaulting to `~/.config/sops/age/keys.txt` via `DEFAULT_SOPS_AGE_KEY_FILE` in `common.sh`); used e.g. for the Windfire Keycloak Root CA private key.
 
 A companion sibling repo, `../windfire-security-client` (`$HOME/dev/windfire-security-client`), provides the `client.authClient` Python module that other services (and this repo's own `test/` scripts) use to call the auth server. It's installed into test/consumer virtualenvs via `pip3 install -e $HOME/dev/windfire-security-client`. If `client.authClient` imports are failing, check that sibling repo is present and installed, not this one.
 
@@ -45,7 +46,7 @@ Both prompt interactively for username/password/service (`common.sh`'s `getCrede
 
 `ssl/createRootCA.sh` generates the Windfire self-signed Root CA (`WindfireRootCA.key`/`.crt`) and copies it into `~/opt/windfire/ssl/{keystore,truststore}`. `ssl/generateServerCert.sh` issues per-host server certs off that CA (uses `openssl_config_localhost.ext` / `openssl_config_raspberry.ext` as the SAN config depending on target). These certs are what `SSL_KEYFILE`/`SSL_CERTFILE` in `server/.env` point at, and what `ROOT_CA_PATH` in the test scripts verifies against.
 
-Keycloak's own TLS is set up separately via `keycloak/security/setupTLS.sh` (generates a Java keystore) + `keycloak/setupKeycloakMode.sh` (enables/disables TLS on the Keycloak server) — this is independent of the Windfire Root CA above. The auth server trusts that separate CA when it calls Keycloak's token/userinfo/JWKS endpoints via `KEYCLOAK_VERIFY_SSL_CERTS`/`KEYCLOAK_CA_CERT_PATH` in `server/.env` (see `keycloakAuth.py`'s `KeycloakConfig.verify`) — without a correct `KEYCLOAK_CA_CERT_PATH`, calls to a self-signed Keycloak fail with `SSLCertVerificationError`, which `authRouters.py` surfaces as a misleading 401.
+Keycloak's own TLS is set up separately via `keycloak/security/setupTLS.sh`. That script creates a dedicated **Windfire Keycloak Root CA**: the certificate is `~/opt/keycloak/ssl/truststore/WindfireKeycloakRootCA.crt` and the AES-256 key is `~/opt/keycloak/ssl/keystore/WindfireKeycloakRootCA.key`, which the user encrypts with sops/age by hand. The same script issues PEM `windfire-keycloak.key`/`.crt` server certificates off that CA (SANs from `keycloak/security/openssl_config_{localhost,raspberry}.ext`) and checks their expiry. It is independent of the Windfire Root CA above; see `keycloak/security/Keycloak_Root_CA_automation_plan.md` for the target design. After functions 1 and 2 it prints a red reminder that the plain CA key must be sops-encrypted, saved in the Password Manager and then deleted from disk. For a local Keycloak, `keycloak/setupKeycloakMode.sh` option 1 copies the localhost `windfire-keycloak.crt/.key` into `$KEYCLOAK_HOME/conf/tls` (`KEYCLOAK_CONF_TLS_DIR`), and `start-keycloak.sh` option 2 starts Keycloak with `--https-certificate-file`/`--https-certificate-key-file`. The Raspberry Pi copies under `keycloak/deployment/raspberry/keycloak_scripts/` are deployment procedures and still use the old keystore flow. The auth server trusts that separate CA when it calls Keycloak's token/userinfo/JWKS endpoints via `KEYCLOAK_VERIFY_SSL_CERTS`/`KEYCLOAK_CA_CERT_PATH` in `server/.env` (see `keycloakAuth.py`'s `KeycloakConfig.verify`) — without a correct `KEYCLOAK_CA_CERT_PATH`, calls to a self-signed Keycloak fail with `SSLCertVerificationError`, which `authRouters.py` surfaces as a misleading 401.
 
 ## Architecture of `server/`
 
