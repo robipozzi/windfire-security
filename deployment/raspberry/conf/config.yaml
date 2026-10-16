@@ -17,3 +17,6 @@ install_python_modules_script: installPrereqs.sh
 run_server_script: start-auth-server.sh
 stop_server_script: stop-auth-server.sh
 process: authServer.py
+local_keycloak_truststore_dir: "{{ local_home_dir }}/opt/keycloak/ssl/truststore"
+remote_keycloak_truststore_dir: "{{ remote_home_dir }}/opt/keycloak/ssl/truststore"
+keycloak_ca_root_certificate: "WindfireKeycloakRootCA.crt"

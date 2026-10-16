@@ -1,6 +1,7 @@
 import requests # pyright: ignore[reportMissingModuleSource]
 import jwt # pyright: ignore[reportMissingImports]
 import json
+import os
 from typing import Dict, Any
 from datetime import datetime, timedelta
 from config.service_config_reader import serviceConfig
@@ -48,6 +49,11 @@ class KeycloakConfig:
         if verify_ssl is None:
             verify_ssl = True  # secure by default when unset
         ca_cert_path = settings.get('KEYCLOAK_CA_CERT_PATH')
+        if ca_cert_path:
+            # Allow "~" so the same .env works locally and on the Raspberry Pi
+            ca_cert_path = os.path.expanduser(ca_cert_path)
+            if verify_ssl and not os.path.isfile(ca_cert_path):
+                logger.error(f"KEYCLOAK_CA_CERT_PATH not found: {ca_cert_path}")
         self.verify = ca_cert_path if (verify_ssl and ca_cert_path) else verify_ssl
 
         logger.debug(f"KeycloakConfig: ")

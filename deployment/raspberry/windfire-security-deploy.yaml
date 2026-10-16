@@ -96,6 +96,23 @@
         group: "{{ group }}"
         mode: "{{ mode }}"
 
+    # Task 6b: Copy Windfire Keycloak Root CA certificate (KEYCLOAK_CA_CERT_PATH in server/.env)
+    - name: Ensure remote Keycloak truststore directory {{ remote_keycloak_truststore_dir }} exists
+      file:
+        path: "{{ remote_keycloak_truststore_dir }}"
+        state: directory
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: "{{ mode }}"
+        recurse: yes
+    - name: Copy {{ keycloak_ca_root_certificate }} to "{{ remote_keycloak_truststore_dir }}" directory on remote server
+      copy:
+        src: "{{ local_keycloak_truststore_dir }}/{{ keycloak_ca_root_certificate }}"
+        dest: "{{ remote_keycloak_truststore_dir }}"
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: "{{ mode }}"
+
     # Task 7: Create Python virtual environment
     - name: Create Python virtual environment
       command:
