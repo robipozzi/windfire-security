@@ -88,6 +88,8 @@ cd keycloak/deployment/raspberry
 ./uninstall-keycloak.sh  # removes the installed Keycloak directory and utility scripts
 ```
 
+sudo on raspberry01/raspberry02 requires the `pi` password, so these playbooks always ask for it (`BECOME password:`, via `-K` and `become_ask_pass=True` in **[ansible.cfg](keycloak/deployment/raspberry/ansible.cfg)**).
+
 Everything past the unpack step — generating the TLS keystore, enabling/disabling TLS, and starting Keycloak (dev mode, TLS, or Docker) with an admin user — is still manual: SSH onto the Pi and run the scripts copied under `~/keycloak` (source in **[keycloak_scripts/](keycloak/deployment/raspberry/keycloak_scripts/)**), which mirror **[setupKeycloakMode.sh](keycloak/setupKeycloakMode.sh)** and **[start-keycloak.sh](keycloak/start-keycloak.sh)** described above — they `read -s` for credentials interactively and background the process with `&` (no systemd unit, so Keycloak won't survive a reboot).
 
 #### Secure and run Keycloak server with TLS self signed certificate
@@ -250,4 +252,4 @@ cd deployment
 ./undeploy.sh    # tears it down
 ```
 
-Both scripts prompt for a target platform (currently only Raspberry Pi is supported) and drive the playbooks under **[deployment/raspberry/](deployment/raspberry/)**, configured via **[conf/config.yaml](deployment/raspberry/conf/config.yaml)**.
+Both scripts prompt for a target platform (currently only Raspberry Pi is supported) and drive the playbooks under **[deployment/raspberry/](deployment/raspberry/)**, configured via **[conf/config.yaml](deployment/raspberry/conf/config.yaml)**. The playbooks run as `pi` without sudo (everything is installed under `/home/pi`), so they don't ask for the sudo password.

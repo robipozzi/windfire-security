@@ -2,8 +2,6 @@
 # Software installation and configuration
 - hosts: security_service
   remote_user: "{{ user }}"
-  become: yes
-  become_user: "{{ user }}"
   vars:
     src_dir: "{{ playbook_dir }}"
     mode: u=rwx
