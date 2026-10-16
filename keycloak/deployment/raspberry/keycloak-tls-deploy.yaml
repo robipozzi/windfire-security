@@ -1,0 +1,274 @@
+--- # Ansible Playbook to deploy Keycloak server certificate signed by Windfire Keycloak Root CA
+# Copy certificate and key, update keycloak.conf, stop, build if needed, restart Keycloak, backup old certificate and key
+- hosts: identitymanager
+  remote_user: "{{ user }}"
+  become: yes
+  vars:
+    src_dir: "{{ playbook_dir }}"
+    local_server_cert: "{{ local_certs_dir }}/{{ keycloak_cert_name }}.crt"
+    local_server_key: "{{ local_certs_dir }}/{{ keycloak_cert_name }}.key"
+    remote_server_cert: "{{ keycloak_tls_dir }}/{{ keycloak_cert_name }}.crt"
+    remote_server_key: "{{ keycloak_tls_dir }}/{{ keycloak_cert_name }}.key"
+  vars_files:
+    - "{{ src_dir }}/conf/raspberry-config.yml"
+    - "{{ src_dir }}/conf/keycloak-tls-config.yml"
+  tasks:
+    ##################################################
+    ##### Pre-flight checks on local certificate #####
+    ##################################################
+    - name: Find OpenSSL 3 on the controller (Homebrew openssl@3 if available)
+      set_fact:
+        openssl_bin: "{{ (brew_openssl_prefix | length > 0) | ternary(brew_openssl_prefix ~ '/bin/openssl', 'openssl') }}"
+      vars:
+        brew_openssl_prefix: "{{ lookup('pipe', 'brew --prefix openssl@3 2>/dev/null || true') }}"
+      run_once: true
+    - name: Check local certificate, key and Windfire Keycloak Root CA exist
+      stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ local_server_cert }}"
+        - "{{ local_server_key }}"
+        - "{{ local_root_ca_cert }}"
+      register: local_tls_files
+      delegate_to: localhost
+      become: no
+      run_once: true
+    - name: Fail if any local file is missing
+      assert:
+        that: item.stat.exists
+        fail_msg: "{{ item.item }} not found, generate it with keycloak/security/setupTLS.sh (option 2, Production)"
+        quiet: true
+      loop: "{{ local_tls_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      run_once: true
+    - name: Verify certificate is signed by Windfire Keycloak Root CA
+      command: "{{ openssl_bin }} verify -CAfile {{ local_root_ca_cert }} {{ local_server_cert }}"
+      changed_when: false
+      check_mode: false
+      delegate_to: localhost
+      become: no
+      run_once: true
+    - name: Verify certificate is not expired
+      command: "{{ openssl_bin }} x509 -in {{ local_server_cert }} -noout -checkend 0"
+      changed_when: false
+      check_mode: false
+      delegate_to: localhost
+      become: no
+      run_once: true
+    - name: Read certificate public key
+      command: "{{ openssl_bin }} x509 -in {{ local_server_cert }} -noout -pubkey"
+      register: local_cert_pubkey
+      changed_when: false
+      check_mode: false
+      delegate_to: localhost
+      become: no
+      run_once: true
+    - name: Read private key public key
+      command: "{{ openssl_bin }} pkey -in {{ local_server_key }} -pubout"
+      register: local_key_pubkey
+      changed_when: false
+      check_mode: false
+      delegate_to: localhost
+      become: no
+      run_once: true
+    - name: Fail if certificate and private key do not match
+      assert:
+        that: local_cert_pubkey.stdout == local_key_pubkey.stdout
+        fail_msg: "{{ local_server_cert }} and {{ local_server_key }} do not match"
+        quiet: true
+      run_once: true
+    ###############################################
+    ##### Pre-flight checks on remote Keycloak #####
+    ###############################################
+    - name: Check "{{ keycloak_conf }}" exists
+      stat:
+        path: "{{ keycloak_conf }}"
+      register: keycloak_conf_file
+    - name: Fail if "{{ keycloak_conf }}" is missing
+      assert:
+        that: keycloak_conf_file.stat.exists
+        fail_msg: "{{ keycloak_conf }} not found on {{ inventory_hostname }}"
+        quiet: true
+    - name: Check "{{ keycloak_tls_group }}" group exists
+      getent:
+        database: group
+        key: "{{ keycloak_tls_group }}"
+    - name: Read Keycloak systemd unit ExecStart
+      command: "systemctl show {{ keycloak_service }} -p ExecStart --value"
+      register: keycloak_exec_start
+      changed_when: false
+      check_mode: false
+    - name: Read Keycloak systemd unit Environment
+      command: "systemctl show {{ keycloak_service }} -p Environment --value"
+      register: keycloak_unit_env
+      changed_when: false
+      check_mode: false
+    - name: Set Keycloak facts from systemd unit
+      set_fact:
+        kc_sh: "{{ keycloak_exec_start.stdout | regex_search('path=([^ ;]+)', '\\1') | default([''], true) | first }}"
+        keycloak_optimized: "{{ '--optimized' in keycloak_exec_start.stdout }}"
+        backup_stamp: "{{ ansible_facts.date_time.date | replace('-', '') }}-{{ ansible_facts.date_time.hour }}{{ ansible_facts.date_time.minute }}{{ ansible_facts.date_time.second }}"
+    ##########################################################
+    ##### Copy server certificate and key to raspberry01 #####
+    ##########################################################
+    - name: Ensure "{{ keycloak_tls_dir }}" remote directory exists
+      file:
+        path: "{{ keycloak_tls_dir }}"
+        state: directory
+        owner: "{{ keycloak_tls_owner }}"
+        group: "{{ keycloak_tls_group }}"
+        mode: "0750"
+    - name: Copy server certificate to "{{ remote_server_cert }}"
+      copy:
+        src: "{{ local_server_cert }}"
+        dest: "{{ remote_server_cert }}"
+        owner: "{{ keycloak_tls_owner }}"
+        group: "{{ keycloak_tls_group }}"
+        mode: "0640"
+        backup: yes
+      register: tls_cert_copy
+    - name: Copy server key to "{{ remote_server_key }}"
+      copy:
+        src: "{{ local_server_key }}"
+        dest: "{{ remote_server_key }}"
+        owner: "{{ keycloak_tls_owner }}"
+        group: "{{ keycloak_tls_group }}"
+        mode: "0640"
+        backup: yes
+      register: tls_key_copy
+      no_log: true
+    ############################################
+    ##### Update keycloak.conf if needed   #####
+    ############################################
+    - name: Set https-certificate-file in "{{ keycloak_conf }}"
+      lineinfile:
+        path: "{{ keycloak_conf }}"
+        regexp: '^https-certificate-file='
+        line: "https-certificate-file={{ remote_server_cert }}"
+        backup: yes
+      register: kc_conf_cert
+    - name: Set https-certificate-key-file in "{{ keycloak_conf }}"
+      lineinfile:
+        path: "{{ keycloak_conf }}"
+        regexp: '^https-certificate-key-file='
+        line: "https-certificate-key-file={{ remote_server_key }}"
+        backup: yes
+      register: kc_conf_key
+    - name: Remove https-key-store-* lines from "{{ keycloak_conf }}"
+      lineinfile:
+        path: "{{ keycloak_conf }}"
+        regexp: '^https-key-store-'
+        state: absent
+        backup: yes
+      register: kc_conf_keystore
+    - name: Decide if Keycloak must be restarted and built
+      set_fact:
+        kc_conf_changed: "{{ kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed }}"
+        # Each lineinfile backs up keycloak.conf before its own change: the first backup taken is the original file
+        kc_conf_backup: "{{ [kc_conf_cert.backup | default(''), kc_conf_key.backup | default(''), kc_conf_keystore.backup | default('')] | select | first | default('') }}"
+        restart_needed: "{{ tls_cert_copy is changed or tls_key_copy is changed or kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed or keycloak_force_build | bool }}"
+        # https-certificate-* are runtime options: build only if forced, or if keycloak.conf changed and Keycloak starts --optimized
+        build_needed: "{{ keycloak_force_build | bool or ((kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed) and keycloak_optimized | bool) }}"
+    ######################################################
+    ##### Stop, build if needed and restart Keycloak #####
+    ######################################################
+    - name: Stop, build and restart Keycloak, rolling back on failure
+      block:
+        - name: Stop Keycloak
+          systemd:
+            name: "{{ keycloak_service }}"
+            state: stopped
+          when: restart_needed | bool
+        - name: Fail if kc.sh cannot be found in Keycloak systemd unit
+          assert:
+            that: kc_sh is search('kc\.sh$')
+            fail_msg: "kc.sh not found in {{ keycloak_service }} ExecStart ({{ keycloak_exec_start.stdout }}), cannot build Keycloak"
+            quiet: true
+          when: build_needed | bool
+        - name: Build Keycloak
+          command: "{{ kc_sh }} --config-file={{ keycloak_conf }} build"
+          become_user: "{{ keycloak_user }}"
+          environment: "{{ dict(keycloak_unit_env.stdout.split() | map('regex_search', '^([^=]+)=(.*)$', '\\1', '\\2') | select | list) }}"
+          when: build_needed | bool
+        - name: Start Keycloak
+          systemd:
+            name: "{{ keycloak_service }}"
+            state: started
+            daemon_reload: yes
+        - name: Wait for Keycloak to serve the new certificate over HTTPS
+          uri:
+            url: "https://{{ inventory_hostname }}:{{ keycloak_https_port }}/realms/master/"
+            ca_path: "{{ local_root_ca_cert }}"
+            validate_certs: yes
+          register: keycloak_https_check
+          until: keycloak_https_check.status == 200
+          retries: 24
+          delay: 5
+          delegate_to: localhost
+          become: no
+      rescue:
+        - name: Restore previous certificate, key and keycloak.conf
+          copy:
+            src: "{{ item.backup }}"
+            dest: "{{ item.dest }}"
+            remote_src: yes
+          loop:
+            - { backup: "{{ tls_cert_copy.backup_file | default('') }}", dest: "{{ remote_server_cert }}" }
+            - { backup: "{{ tls_key_copy.backup_file | default('') }}", dest: "{{ remote_server_key }}" }
+            - { backup: "{{ kc_conf_backup }}", dest: "{{ keycloak_conf }}" }
+          loop_control:
+            label: "{{ item.dest }}"
+          when: item.backup | length > 0
+          no_log: true
+        - name: Restart Keycloak with previous configuration
+          systemd:
+            name: "{{ keycloak_service }}"
+            state: restarted
+            daemon_reload: yes
+        - name: Fail after rollback
+          fail:
+            msg: "Keycloak did not start with the new certificate, previous configuration restored. Check: journalctl -u {{ keycloak_service }}"
+    ###########################################################
+    ##### Backup old server.crt.pem and server.key.pem    #####
+    ###########################################################
+    - name: Check old server certificate and key
+      stat:
+        path: "{{ keycloak_tls_dir }}/{{ item }}"
+      loop:
+        - "{{ old_server_cert }}"
+        - "{{ old_server_key }}"
+      register: old_tls_files
+    - name: List old server certificate and key to backup
+      set_fact:
+        # Regular files only: missing files have no isreg, an empty name would stat the tls directory itself
+        old_tls_to_backup: "{{ old_tls_files.results | selectattr('stat.isreg', 'defined') | selectattr('stat.isreg') | map(attribute='item') | list }}"
+    - name: Ensure "{{ keycloak_tls_dir }}/backup-{{ backup_stamp }}" remote directory exists
+      file:
+        path: "{{ keycloak_tls_dir }}/backup-{{ backup_stamp }}"
+        state: directory
+        owner: "{{ keycloak_tls_owner }}"
+        group: "{{ keycloak_tls_group }}"
+        mode: "0750"
+      when: old_tls_to_backup | length > 0
+    - name: Move old server certificate and key to "{{ keycloak_tls_dir }}/backup-{{ backup_stamp }}"
+      command:
+        cmd: "mv {{ keycloak_tls_dir }}/{{ item }} {{ keycloak_tls_dir }}/backup-{{ backup_stamp }}/{{ item }}"
+        removes: "{{ keycloak_tls_dir }}/{{ item }}"
+        creates: "{{ keycloak_tls_dir }}/backup-{{ backup_stamp }}/{{ item }}"
+      loop: "{{ old_tls_to_backup }}"
+    #####################
+    ##### Summary   #####
+    #####################
+    - name: Read deployed server certificate
+      command: "openssl x509 -in {{ remote_server_cert }} -noout -subject -issuer -enddate"
+      register: deployed_cert
+      changed_when: false
+      when: not ansible_check_mode
+    - name: Show deployment summary
+      debug:
+        msg:
+          - "{{ deployed_cert.stdout_lines | default(['certificate not read in check mode']) }}"
+          - "keycloak.conf changed: {{ kc_conf_changed }} (backup: {{ kc_conf_backup | default('none', true) }})"
+          - "Keycloak restarted: {{ restart_needed }}, built: {{ build_needed }}"
+          - "Old certificate and key backup: {{ (old_tls_to_backup | length > 0) | ternary(keycloak_tls_dir ~ '/backup-' ~ backup_stamp, 'nothing to backup') }}"

@@ -1,0 +1,18 @@
+# Keycloak TLS deployment settings, used by keycloak-tls-deploy.yaml
+# Local (controller) files, produced by keycloak/security/setupTLS.sh option 2 (Production)
+local_certs_dir: "{{ lookup('env', 'HOME') }}/opt/keycloak/ssl/certs/raspberry"
+local_root_ca_cert: "{{ lookup('env', 'HOME') }}/opt/keycloak/ssl/truststore/WindfireKeycloakRootCA.crt"
+keycloak_cert_name: windfire-keycloak
+# Remote (raspberry01) Keycloak settings
+keycloak_conf: /etc/keycloak/keycloak.conf
+keycloak_tls_dir: /etc/keycloak/tls
+keycloak_tls_owner: root
+keycloak_tls_group: keycloak
+keycloak_service: keycloak
+keycloak_user: keycloak
+keycloak_https_port: 8443
+# Old self-signed certificate and key, moved to a backup folder after a successful switch
+old_server_cert: server.crt.pem
+old_server_key: server.key.pem
+# Set to true (-e keycloak_force_build=true) to always run kc.sh build
+keycloak_force_build: false

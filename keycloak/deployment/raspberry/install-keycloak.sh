@@ -1,1 +1,1 @@
-ansible-playbook keycloak.yaml
+ansible-playbook -K keycloak.yaml
