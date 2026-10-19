@@ -1,0 +1,21 @@
+[Unit]
+Description=Windfire Security Authentication Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ user }}
+WorkingDirectory={{ remote_windfire_security_dir }}/server
+Environment=LOG_LEVEL={{ log_level }}
+LoadCredentialEncrypted={{ service_config_credential }}:/etc/credstore.encrypted/{{ service_config_credential }}
+# %d is the credentials directory ($CREDENTIALS_DIRECTORY) of this unit
+Environment=SERVICE_CONFIG_FILE=%d/{{ service_config_credential }}
+ExecStart={{ venv_path }}/bin/python {{ process }}
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:{{ remote_windfire_security_dir }}/server/logs/{{ service_name }}.log
+StandardError=append:{{ remote_windfire_security_dir }}/server/logs/{{ service_name }}.log
+
+[Install]
+WantedBy=multi-user.target

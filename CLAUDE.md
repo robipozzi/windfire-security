@@ -21,7 +21,7 @@ cd server
 ./start-auth-server.sh -p 9000       # custom port
 ./start-auth-server.sh -v            # verbose/DEBUG logging
 ./run-auth-server-background.sh      # same, but backgrounded, logs to logs/windfire-security-server.log
-./stop-auth-server.sh                # kills the authServer.py process
+./stop-auth-server.sh                # stops the authServer.py process (refuses if the windfire-security systemd service runs it)
 ```
 
 First-time setup requires copying two placeholder files (both gitignored, never commit real values):
@@ -29,6 +29,10 @@ First-time setup requires copying two placeholder files (both gitignored, never 
 - `server/config/service_config.json_PLACEHOLDER` → `server/config/service_config.json` — per-service Keycloak `realm`/`client_id`/`client_secret` map, keyed by service name (e.g. `windfire-calendar-srv`). This is how one auth server backs multiple Windfire client services.
 
 `server/createPythonVenv.sh` / `activatePythonVenv.sh` / `deactivatePythonVenv.sh` manage a venv named `windfire-security-server` (see `PYTHON_SERVER_VIRTUAL_ENV` in `common.sh`); `server/installPrereqs.sh` pins the FastAPI/uvicorn/PyJWT/cryptography versions.
+
+## Deploying to Raspberry
+
+`deployment/deploy.sh [1]` / `deployment/undeploy.sh [1] [-y]` run the playbooks in `deployment/raspberry/` against the `security_service` inventory group (raspberry01), mirroring windfire-calendar's deployment. The server runs there as the `windfire-security` systemd unit (`templates/windfire-security.service.j2`, `Restart=on-failure`, enabled at boot) on port 8444 (Keycloak owns 8443 on that host). The playbooks use `become: yes` and `become_ask_pass=True` because sudo on the Pis needs the `pi` password. The Pi's `server/.env` is templated from `templates/windfire-security.env.j2` (the local `.env` is never copied; `deploy.sh` only asks for `KEYCLOAK_SERVER_URL`). `service_config.json` holds the client secrets, so it is never copied in plaintext: the playbook encrypts the local file with `systemd-creds` into `/etc/credstore.encrypted/windfire-security-service-config`, the unit loads it with `LoadCredentialEncrypted`, and `ServiceConfigReader` reads it through the `SERVICE_CONFIG_FILE` env var (default `config/service_config.json` for local runs). The service's stdout/stderr go to `server/logs/windfire-security.log`, alongside the app's own rotating `windfire-security-server.log`.
 
 ## Running tests
 
@@ -40,7 +44,7 @@ cd test
 ./run-test-client.sh -e dev         # runs testClient.py: hits health endpoints, authenticates via Keycloak, calls the protected endpoint
 ```
 
-Both prompt interactively for username/password/service (`common.sh`'s `getCredentials`), defaulting service to `windfire-calendar-srv`. `-e {dev|staging|prod}` selects which auth server to target (`prod` points at `raspberry01:8443`, others at `localhost:8443`). Uses a separate `windfire-security-test` venv; `test/installPrereqs.sh` additionally does the editable install of the sibling `windfire-security-client` repo.
+Both prompt interactively for username/password/service (`common.sh`'s `getCredentials`), defaulting service to `windfire-calendar-srv`. `-e {dev|staging|prod}` selects which auth server to target (`prod` points at `raspberry01:8444`, others at `localhost:8443`). Uses a separate `windfire-security-test` venv; `test/installPrereqs.sh` additionally does the editable install of the sibling `windfire-security-client` repo.
 
 ## Certificate / TLS setup
 

@@ -2,21 +2,31 @@
 # Software installation and configuration
 - hosts: security_service
   remote_user: "{{ user }}"
+  become: yes
   vars:
     src_dir: "{{ playbook_dir }}"
     mode: u=rwx
   vars_files:
     - "{{ src_dir }}/conf/config.yaml"
   tasks:
-    ################################################################
-    ##### Windfire Security server component uninstall Section #####
-    ################################################################
-    # Task 1: Stop Windfire Security service on remote server
+    ########################################################
+    ##### Windfire Security service uninstall Section #####
+    ########################################################
+    # Task 1: Stop and disable Windfire Security service on remote server
+    - name: Stop and disable "{{ service_name }}" systemd service if running
+      systemd:
+        name: "{{ service_name }}"
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+
+    # Fallback for processes started by hand with run-auth-server-background.sh
     - name: Get PID for running process "{{ process }}"
       shell: "pgrep -f {{ process }}"
       register: app_pid
       failed_when: app_pid.rc > 1
-    
+      changed_when: false
+
     - name: Kill "{{ process }}" process gracefully
       shell: "kill -TERM {{ item }}"
       with_items: "{{ app_pid.stdout_lines }}"
@@ -33,9 +43,23 @@
       with_items: "{{ app_pid.stdout_lines }}"
       when: app_pid.rc == 0
       ignore_errors: yes
-    
-    # Task 2: Delete Windfire Security directory on remote server
-    - name: Remove "{{ remote_windfire_security_dir }}" folder and all its contents on remote server 
+
+    # Task 2: Remove systemd unit and encrypted service configuration
+    - name: Remove Windfire Security systemd unit file and encrypted service configuration
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/etc/systemd/system/{{ service_name }}.service"
+        - "/etc/credstore.encrypted/{{ service_config_credential }}"
+
+    - name: Reload systemd after removing unit file
+      systemd:
+        daemon_reload: yes
+
+    # Task 3: Delete Windfire Security directory on remote server
+    # The shared Windfire Root CA and Windfire Keycloak Root CA truststores are left in place
+    - name: Remove "{{ remote_windfire_security_dir }}" folder and all its contents on remote server
       ansible.builtin.file:
         path: "{{ remote_windfire_security_dir }}"
         state: absent

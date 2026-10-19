@@ -1,22 +1,54 @@
 --- # Ansible Playbook to configure a set of Raspberry PIs in a consistent and repeatable way
 # Software installation and configuration
+# The play runs with become (root): tasks that write under the pi home folder either set owner/group
+# or run as the connecting user with "become: false", so parent folders are never created as root.
 - hosts: security_service
   remote_user: "{{ user }}"
+  become: yes
   vars:
     src_dir: "{{ playbook_dir }}"
     mode: u=rwx
+    keycloak_server_url: "{{ lookup('env', 'KEYCLOAK_SERVER_URL') }}"
   vars_files:
     - "{{ src_dir }}/conf/config.yaml"
   tasks:
     #################################################################
     ##### Windfire Security server component deployment Section #####
     #################################################################
+    # Task 0: Check that deploy.sh exported the Keycloak configuration and that the service configuration exists
+    - name: Check Keycloak server URL is set
+      ansible.builtin.assert:
+        that:
+          - keycloak_server_url | length > 0
+        fail_msg: "KEYCLOAK_SERVER_URL must be exported (run deployment/deploy.sh)"
+        quiet: true
+
+    - name: Check local service configuration {{ local_service_config_file }} exists
+      ansible.builtin.stat:
+        path: "{{ local_service_config_file }}"
+      register: local_service_config
+      delegate_to: localhost
+      become: false
+
+    - name: Fail if local service configuration is missing
+      ansible.builtin.fail:
+        msg: "{{ local_service_config_file }} not found: copy server/config/service_config.json_PLACEHOLDER and set the real values"
+      when: not local_service_config.stat.exists
+
     # Task 1: Stop Windfire Security service on remote server
+    - name: Stop "{{ service_name }}" systemd service if running
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        state: stopped
+      failed_when: false
+
+    # Fallback for processes started by hand with run-auth-server-background.sh before the systemd service existed
     - name: Get PID for running process "{{ process }}"
       shell: "pgrep -f {{ process }}"
       register: app_pid
       failed_when: app_pid.rc > 1
-    
+      changed_when: false
+
     - name: Kill "{{ process }}" process gracefully
       shell: "kill -TERM {{ item }}"
       with_items: "{{ app_pid.stdout_lines }}"
@@ -34,116 +66,233 @@
       when: app_pid.rc == 0
       ignore_errors: yes
 
-    # Task 2: Delete Windfire Security directory on remote server
-    - name: Remove "{{ remote_windfire_security_dir }}" directory and all its contents on remote server 
+    # Task 2: Recreate Windfire Security directory on remote server
+    - name: Remove "{{ remote_windfire_security_dir }}" directory and all its contents on remote server
       ansible.builtin.file:
         path: "{{ remote_windfire_security_dir }}"
         state: absent
-    
-    # Task 3: Create Windfire Security directory on remote server and copy files
+
+    - name: Create "{{ remote_windfire_security_dir }}" directory on remote server
+      ansible.builtin.file:
+        path: "{{ remote_windfire_security_dir }}"
+        state: directory
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: "0755"
+
+    # Task 3: Copy Windfire Security server component to remote server
+    # .env is templated (Task 4), service_config.json is encrypted with systemd-creds (Task 7), logs are created below
     - name: Copy Windfire Security server component to "{{ remote_windfire_security_dir }}" directory on remote server
       ansible.builtin.synchronize:
-        src: "../../server"
+        src: "{{ src_dir }}/../../server"
         dest: "{{ remote_windfire_security_dir }}"
         rsync_opts:
           - "--exclude=windfire-security-server"
           - "--exclude=__pycache__"
+          - "--exclude=config/service_config.json"
           - "--exclude=config/service_config.json_PLACEHOLDER"
           - "--exclude=ssl/windfire-security.crt"
           - "--exclude=ssl/windfire-security.key"
+          - "--exclude=.env"
           - "--exclude=.env_PLACEHOLDER"
+          - "--exclude=logs"
           - "--exclude=windfire-security-server.log*"
-    
-    # Task 4: Copy SSL certificate and key to remote server
+      become: false
+
+    - name: Create "{{ remote_windfire_security_dir }}/server/logs" directory on remote server
+      ansible.builtin.file:
+        path: "{{ remote_windfire_security_dir }}/server/logs"
+        state: directory
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: "0755"
+
+    # Task 4: Template application configuration (non-secret values only)
+    - name: Template "{{ remote_windfire_security_dir }}/server/.env" configuration file
+      ansible.builtin.template:
+        src: "{{ src_dir }}/templates/windfire-security.env.j2"
+        dest: "{{ remote_windfire_security_dir }}/server/.env"
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: "0600"
+
+    # Task 5: Copy TLS material to remote server
     - name: Copy certificate {{ windfire_server_certificate }} from {{ local_certs_dir }} to "{{ remote_windfire_security_dir }}/server/ssl" directory on remote server
       copy:
         src: "{{ local_certs_dir }}/{{ windfire_server_certificate }}"
-        dest: "{{ remote_windfire_security_dir }}/server/ssl"
+        dest: "{{ remote_windfire_security_dir }}/server/ssl/{{ windfire_server_certificate }}"
         owner: "{{ user }}"
         group: "{{ group }}"
-        mode: "{{ mode }}"
+        mode: "0644"
+
     - name: Copy key {{ windfire_server_key }} from {{ local_certs_dir }} to "{{ remote_windfire_security_dir }}/server/ssl" directory on remote server
       copy:
         src: "{{ local_certs_dir }}/{{ windfire_server_key }}"
-        dest: "{{ remote_windfire_security_dir }}/server/ssl"
+        dest: "{{ remote_windfire_security_dir }}/server/ssl/{{ windfire_server_key }}"
         owner: "{{ user }}"
         group: "{{ group }}"
-        mode: "{{ mode }}"
+        mode: "0600"
 
-    # Task 5: Copy common.sh to remote server
-    - name: Copy common.sh to "{{ remote_windfire_security_dir }}" directory on remote server
-      copy:
-        src: "../../common.sh"
-        dest: "{{ remote_windfire_security_dir }}"
-        owner: "{{ user }}"
-        group: "{{ group }}"
-        mode: "{{ mode }}"
-    
-    # Task 6: Ensure remote truststore directory exists and copy Windfire Root CA certificate
     - name: Ensure remote truststore directory {{ remote_truststore_dir }} exists
       file:
         path: "{{ remote_truststore_dir }}"
         state: directory
-        owner: "{{ user }}"
-        group: "{{ group }}"
         mode: "{{ mode }}"
-        recurse: yes
+      become: false
+
     - name: Copy {{ windfire_ca_root_certificate }} to "{{ remote_truststore_dir }}" directory on remote server
       copy:
-        src: "{{ local_ssl_dir }}/truststore/{{ windfire_ca_root_certificate }}"
-        dest: "{{ remote_truststore_dir }}"
+        src: "{{ local_truststore_dir }}/{{ windfire_ca_root_certificate }}"
+        dest: "{{ remote_truststore_dir }}/{{ windfire_ca_root_certificate }}"
         owner: "{{ user }}"
         group: "{{ group }}"
-        mode: "{{ mode }}"
+        mode: "0644"
 
-    # Task 6b: Copy Windfire Keycloak Root CA certificate (KEYCLOAK_CA_CERT_PATH in server/.env)
+    # Windfire Keycloak Root CA certificate (KEYCLOAK_CA_CERT_PATH in server/.env)
     - name: Ensure remote Keycloak truststore directory {{ remote_keycloak_truststore_dir }} exists
       file:
         path: "{{ remote_keycloak_truststore_dir }}"
         state: directory
-        owner: "{{ user }}"
-        group: "{{ group }}"
         mode: "{{ mode }}"
-        recurse: yes
+      become: false
+
     - name: Copy {{ keycloak_ca_root_certificate }} to "{{ remote_keycloak_truststore_dir }}" directory on remote server
       copy:
         src: "{{ local_keycloak_truststore_dir }}/{{ keycloak_ca_root_certificate }}"
-        dest: "{{ remote_keycloak_truststore_dir }}"
+        dest: "{{ remote_keycloak_truststore_dir }}/{{ keycloak_ca_root_certificate }}"
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: "0644"
+
+    # Task 6: Copy common.sh to remote server (server scripts source ../common.sh)
+    - name: Copy common.sh to "{{ remote_windfire_security_dir }}" directory on remote server
+      copy:
+        src: "{{ src_dir }}/../../common.sh"
+        dest: "{{ remote_windfire_security_dir }}/common.sh"
         owner: "{{ user }}"
         group: "{{ group }}"
         mode: "{{ mode }}"
 
-    # Task 7: Create Python virtual environment
+    # Task 7: Create Python virtual environment and install required Python modules
     - name: Create Python virtual environment
       command:
         cmd: "{{ python_interpreter }} -m venv {{ venv_path }}"
         creates: "{{ venv_path }}/bin/activate"
+      become: false
 
-    # Task 8: Verify virtualenv installation
     - name: Verify virtualenv is properly configured
       shell:
         cmd: "source {{ venv_path }}/bin/activate && python --version"
         executable: /bin/bash
       register: python_version
       changed_when: false
+      become: false
+
     - name: Display Python version in virtualenv
       debug:
         msg: "Python version in virtualenv: {{ python_version.stdout }}"
-    
-    # Task 9: Install required Python modules in virtualenv
+
     - name: Install required Python modules in virtualenv by running {{ install_python_modules_script }} install script
       shell: |
         source {{ venv_path }}/bin/activate
-        bash {{ remote_windfire_security_dir }}/server/{{ install_python_modules_script }}
+        bash ./{{ install_python_modules_script }}
       args:
         executable: /bin/bash
-      
-    # Task 10: List installed packages
+        chdir: "{{ remote_windfire_security_dir }}/server"
+      become: false
+
     - name: List installed packages in virtualenv
       shell:
         cmd: "{{ venv_path }}/bin/pip list"
       register: pip_list
       changed_when: false
+      become: false
+
     - name: Display installed packages
       debug:
         var: pip_list.stdout_lines
+
+    # Task 8: Encrypt the service configuration (Keycloak client secrets) at rest with systemd-creds
+    # (plaintext never written to disk on the Pi)
+    - name: Ensure /etc/credstore.encrypted directory exists
+      file:
+        path: /etc/credstore.encrypted
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Remove previous encrypted service configuration credential, if any
+      file:
+        path: "/etc/credstore.encrypted/{{ service_config_credential }}"
+        state: absent
+
+    - name: Encrypt Windfire Security service configuration with systemd-creds
+      command:
+        cmd: "systemd-creds encrypt --name={{ service_config_credential }} --with-key=host - /etc/credstore.encrypted/{{ service_config_credential }}"
+        stdin: "{{ lookup('file', local_service_config_file) }}"
+      no_log: true
+      notify: reload systemd
+
+    # Task 9: Install systemd unit
+    - name: Template Windfire Security systemd unit
+      template:
+        src: "{{ src_dir }}/templates/windfire-security.service.j2"
+        dest: "/etc/systemd/system/{{ service_name }}.service"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: reload systemd
+
+    # Task 10: Start Windfire Security service
+    - name: Reload systemd, enable and start "{{ service_name }}" service
+      systemd:
+        daemon_reload: yes
+        name: "{{ service_name }}"
+        state: started
+        enabled: yes
+
+    # Task 11: Post-deploy health check
+    - name: Check Windfire Security service health
+      block:
+        - name: Verify Windfire Security is listening on port {{ api_port_secure }}
+          wait_for:
+            port: "{{ api_port_secure }}"
+            host: 127.0.0.1
+            timeout: 30
+
+        - name: Call https://{{ health_check_host }}:{{ api_port_secure }}/v1/monitor/health
+          uri:
+            url: "https://{{ health_check_host }}:{{ api_port_secure }}/v1/monitor/health"
+            ca_path: "{{ remote_truststore_dir }}/{{ windfire_ca_root_certificate }}"
+            status_code: 200
+          register: health
+          until: health.status == 200
+          retries: 5
+          delay: 3
+      rescue:
+        - name: Get "{{ service_name }}" journal entries
+          command: "journalctl -u {{ service_name }} -n 50 --no-pager"
+          register: service_journal
+          changed_when: false
+          failed_when: false
+
+        - name: Get "{{ service_name }}" log file tail
+          command: "tail -n 50 {{ remote_windfire_security_dir }}/server/logs/{{ service_name }}.log"
+          register: service_log
+          changed_when: false
+          failed_when: false
+
+        - name: Display "{{ service_name }}" diagnostics
+          debug:
+            msg:
+              journal: "{{ service_journal.stdout_lines }}"
+              log: "{{ service_log.stdout_lines }}"
+
+        - name: Fail deployment
+          fail:
+            msg: "{{ service_name }} did not pass the health check, see diagnostics above"
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes

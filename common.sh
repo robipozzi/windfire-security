@@ -7,6 +7,7 @@ MAGENTA=$'\e[1;35m'
 BLU=$'\e[1;34m'
 CYAN=$'\e[1;36m'
 RESET='\033[0m'
+END=$'\e[0m'
 BOLD='\033[1m'
 # ===== EMOJI =====
 coffee=$'\xE2\x98\x95'
@@ -19,6 +20,11 @@ PLATFORM_OPTION=$1
 PLATFORM_SELECTED=false
 DEPLOY_PLATFORM=
 DEPLOY_FUNCTION=
+# Repository root (resolved from this file, so it works whatever the caller's working directory is)
+WINDFIRE_SECURITY_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WINDFIRE_SERVER_CERTIFICATE=windfire-security.crt
+WINDFIRE_SERVER_KEY=windfire-security.key
+ANSIBLE_SSH_KEY=$HOME/.ssh/ansible_rsa
 
 # ===== PYTHON VIRTUAL ENVIRONMENTS VARIABLES =====
 PYTHON_SERVER_VIRTUAL_ENV=windfire-security-server
@@ -96,6 +102,21 @@ setEnvironment()
 	esac
 }
 
+# Function to read a single KEY=value from an env file (.env can't be sourced: values with spaces, inline comments)
+getEnvFileValue()
+{
+    local file=$1
+    local key=$2
+    local value
+    value=$(grep -E "^${key}=" "$file" 2>/dev/null | tail -n 1)
+    value=${value#*=}
+    value=${value%%#*}
+    value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    value=${value#[\"\']}
+    value=${value%[\"\']}
+    echo "$value"
+}
+
 # Function to securely input credentials
 getCredentials() {
     while true; do
@@ -131,7 +152,10 @@ selectDeploymentPlatform()
     if [[ $PLATFORM_OPTION == "" && $PLATFORM_SELECTED == false ]]; then
         echo -e "${BLU}No platform option provided - Select deployment platform :${RESET}"
         echo -e "${GREEN}1. Raspberry${RESET}"
-        read PLATFORM_OPTION
+        if ! read PLATFORM_OPTION; then
+            echo -e "${RED}No input available to select deployment platform${RESET}"
+            exit 1
+        fi
         setDeploymentPlatform
     else
         echo -e "${CYAN}Platform option provided as argument: $PLATFORM_OPTION${RESET}"

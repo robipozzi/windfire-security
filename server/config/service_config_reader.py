@@ -23,17 +23,19 @@ class ServiceConfig:
 
 class ServiceConfigReader:
     """Read and manage service configuration from JSON file"""
-    def __init__(self, config_file: str = 'config/service_config.json'):
+    def __init__(self, config_file: str = None):
         """
         Initialize the configuration reader
         
         Args:
             config_file: Path to the JSON configuration file
+                (defaults to $SERVICE_CONFIG_FILE, then config/service_config.json)
             
         Raises:
             ServiceConfigReader: If configuration file is not found or invalid
         """
-        self.config_file = config_file
+        # SERVICE_CONFIG_FILE lets systemd point at the decrypted credential (see deployment/raspberry/templates)
+        self.config_file = config_file or os.getenv('SERVICE_CONFIG_FILE', 'config/service_config.json')
         self.config: Dict[str, ServiceConfig] = {}
         self._load_config()
     

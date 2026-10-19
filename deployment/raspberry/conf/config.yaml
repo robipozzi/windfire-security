@@ -1,7 +1,8 @@
 user: pi
 group: pi
-local_home_dir: /Users/robertopozzi
+local_home_dir: "{{ lookup('env', 'HOME') }}"
 local_ssl_dir: "{{ local_home_dir }}/opt/windfire/ssl"
+local_truststore_dir: "{{ local_ssl_dir }}/truststore"
 local_certs_dir: "{{ local_ssl_dir }}/certs/raspberry"
 remote_home_dir: /home/pi
 remote_ssl_dir: "{{ remote_home_dir }}/opt/windfire/ssl"
@@ -14,9 +15,19 @@ remote_windfire_security_dir: "{{ remote_home_dir }}/windfire-security"
 venv_path: "{{ remote_windfire_security_dir }}/server/windfire-security-server"
 python_interpreter: "python3"
 install_python_modules_script: installPrereqs.sh
-run_server_script: start-auth-server.sh
-stop_server_script: stop-auth-server.sh
 process: authServer.py
 local_keycloak_truststore_dir: "{{ local_home_dir }}/opt/keycloak/ssl/truststore"
 remote_keycloak_truststore_dir: "{{ remote_home_dir }}/opt/keycloak/ssl/truststore"
 keycloak_ca_root_certificate: "WindfireKeycloakRootCA.crt"
+# Per-service Keycloak realm/client_id/client_secret map: encrypted on the Pi with systemd-creds, never copied in plaintext
+local_service_config_file: "{{ playbook_dir }}/../../server/config/service_config.json"
+# systemd service and application (.env) configuration
+service_name: windfire-security
+service_config_credential: windfire-security-service-config
+app_name: Windfire Security Authentication Service
+api_port: 8000
+# Keycloak already listens on 8443 on raspberry01
+api_port_secure: 8444
+allowed_hosts: raspberry01,localhost
+health_check_host: raspberry01
+log_level: INFO
