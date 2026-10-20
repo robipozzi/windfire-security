@@ -332,7 +332,7 @@ printDeleteRootCAKeyReminder()
     echo -e "    ${BLU}$ROOT_CA_KEY_PATH${RESET}"
     echo -e "${RED}It must NOT stay there: encrypt it, save it in the Password Manager, then delete it.${RESET}"
     echo "  Steps 1, 2 and 4 can be done in one go with the sops utility of this repository:"
-    echo "       (cd ../../sops && ./encrypt-sops.sh 1 \"$ROOT_CA_KEY_PATH\")"
+    echo "       (cd ../../sops && ./sops-crypt.sh -e -f \"$ROOT_CA_KEY_PATH\")"
     echo "  or manually:"
     echo "  1) Encrypt it with sops/age (skip if the Password Manager already holds the current .sops.json):"
     echo "       sops -e --age \"\$(age-keygen -y ~/.config/sops/age/keys.txt)\" --input-type binary --output-type json \\"

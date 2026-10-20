@@ -181,23 +181,27 @@ Re-run `generateServerCert.sh` any time a server cert expires or a new host is a
 These are the certificates that `SSL_KEYFILE`/`SSL_CERTFILE` in the Authentication Service configuration point at (see below), and that the test scripts verify against.
 
 ## Encrypting secrets with sops
-The [sops/](sops/) folder contains **[encrypt-sops.sh](sops/encrypt-sops.sh)**, a small utility to encrypt and decrypt any file (private keys, certificates, `.env` files, ...) with [sops](https://github.com/getsops/sops) and [age](https://github.com/FiloSottile/age) (`brew install sops age`). Files are encrypted in sops binary mode and stored as JSON, e.g. `WindfireKeycloakRootCA.key` → `WindfireKeycloakRootCA.key.sops.json`.
+The [sops/](sops/) folder contains **[sops-crypt.sh](sops/sops-crypt.sh)**, a utility to encrypt and decrypt files with [sops](https://github.com/getsops/sops) and [age](https://github.com/FiloSottile/age) (`brew install sops age`). It has two modes:
 
-The script asks for the age key file, defaulting to `~/.config/sops/age/keys.txt` (`DEFAULT_SOPS_AGE_KEY_FILE` in [common.sh](common.sh)); press Enter to accept it or type another path. The default can also be preset with the `SOPS_AGE_KEY_FILE` environment variable.
+- **File mode** (default): any file (private keys, certificates, `.env` files, ...) is encrypted in sops binary mode and stored as JSON, e.g. `WindfireKeycloakRootCA.key` → `WindfireKeycloakRootCA.key.sops.json`. After encrypting, the script checks that the result decrypts back to the same bytes, then asks whether to delete the plain file (`-r` deletes it without asking). Decryption writes the original file back, readable by the owner only (mode 0600), and reminds you to delete it if it holds a secret.
+- **In-place mode** (`-i`): structured files (YAML, JSON, `.env`, INI) are encrypted or decrypted in place. Keys stay readable and only values are encrypted. The file is encrypted to a temporary copy, which replaces the original only once it decrypts correctly. Decrypted files are set to mode 0600. sops re-serializes the file, so YAML indentation may change.
 
-- **1. Encrypt**: encrypts the file for the age key's public key, checks that the result decrypts back to the same bytes, then asks whether to delete the plain file.
-- **2. Decrypt**: decrypts the file with the age key. The output is readable by the owner only (mode 0600). The script reminds you to delete the output if it holds a secret.
+The age key file defaults to `~/.config/sops/age/keys.txt` (`DEFAULT_SOPS_AGE_KEY_FILE` in [common.sh](common.sh)). You can preset it with the `SOPS_AGE_KEY_FILE` environment variable, or pass it with `-k`. For encryption, `-k` also accepts age public keys (`age1...`, comma-separated); in that case the round-trip check is skipped. Encryption always uses the chosen key, never `.sops.yaml` creation rules.
 
-The function, input file and output file can be passed as arguments; the output file is optional:
+Any option you leave out is asked interactively. Before it runs, the script prints a summary with the exact sops command and asks for confirmation (`-y` skips every prompt). Run `./sops-crypt.sh -h` for all options.
 
 ```bash
 cd sops
-./encrypt-sops.sh                                                                   # interactive menu
-./encrypt-sops.sh 1 ~/opt/keycloak/ssl/keystore/WindfireKeycloakRootCA.key           # -> WindfireKeycloakRootCA.key.sops.json
-./encrypt-sops.sh 2 ~/Downloads/WindfireKeycloakRootCA.key.sops.json ~/opt/keycloak/ssl/keystore/WindfireKeycloakRootCA.key
+./sops-crypt.sh                                                                      # interactive menu
+./sops-crypt.sh -e -f ~/opt/keycloak/ssl/keystore/WindfireKeycloakRootCA.key          # -> WindfireKeycloakRootCA.key.sops.json
+./sops-crypt.sh -d -f ~/Downloads/WindfireKeycloakRootCA.key.sops.json -o ~/opt/keycloak/ssl/keystore/WindfireKeycloakRootCA.key
+./sops-crypt.sh -e -i -f secrets.yaml                                                 # encrypt values in place
+./sops-crypt.sh -d -i -k ~/other/keys.txt -f secrets.yaml                             # decrypt in place with another key
 ```
 
-The script never overwrites an existing output file without asking, and removes a partial or unverified output if something fails.
+The old `encrypt-sops.sh` positional form still works: `./sops-crypt.sh 1 <input file> [output file]` encrypts and `./sops-crypt.sh 2 <input file> [output file]` decrypts.
+
+The script refuses to encrypt a file that is already sops-encrypted, or to decrypt one that is not. It never overwrites an existing output file without asking, and removes a partial or unverified output if something fails.
 
 ## Authentication Service
 The [server/](server/) folder contains the Windfire Security Authentication Service: a FastAPI application that fronts Keycloak so that other Windfire services never need to talk to Keycloak directly.
