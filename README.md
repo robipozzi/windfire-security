@@ -234,7 +234,22 @@ cd server
 Routes are nested under a version prefix:
 - `GET /v1/monitor/health` — service health check.
 - `POST /v1/security/auth` — authenticates a user against Keycloak (via `authenticate_user`) and returns tokens.
-- `POST /v1/security/verify` — verifies a token, by default locally against Keycloak's public keys (no special Keycloak client permissions needed).
+- `POST /v1/security/verify` — verifies a token, by default locally against Keycloak's public keys (no special Keycloak client permissions needed). See [Token verification](#token-verification).
+
+### Token verification
+`/v1/security/verify` accepts a token only if all of these hold:
+- the signature matches one of Keycloak's public keys (JWKS) for the service's realm;
+- `aud` contains the service's `client_id` from `service_config.json`, so a token issued to another client of the same realm is rejected;
+- `iss` equals `{KEYCLOAK_SERVER_URL}/realms/{realm}`;
+- the token is not expired and has the `exp`, `iat`, `iss` and `aud` claims.
+
+This needs two things on the Keycloak side:
+- **An Audience mapper on every client** listed in `service_config.json`. By default, Keycloak access tokens carry `aud: account`, not the client ID. In the Keycloak admin console, open the client, go to *Client scopes* → *&lt;client&gt;-dedicated* → *Add mapper* → *By configuration* → *Audience*, and set *Included Client Audience* to the client itself with *Add to access token* on. Without it, every `/verify` call returns 401.
+- **`KEYCLOAK_SERVER_URL` must match the issuer Keycloak writes into its tokens.** If Keycloak is configured with a different `hostname` (for example a public name rather than the URL the Authentication Service uses), the issuer check fails. Decode a token and compare its `iss` claim with `KEYCLOAK_SERVER_URL` when in doubt.
+
+Keycloak's public keys are cached in memory for 10 minutes. A token signed with an unknown key ID (for example right after a key rotation) triggers a new fetch, but at most once every 30 seconds, so random key IDs cannot make the service call Keycloak on every request.
+
+When verification fails, the response is always `401` with `{"detail": "Invalid or expired token"}`, including when the requested service is not configured. The actual reason (expired, wrong audience, wrong issuer, unknown service, and so on) is written only to the server log, in `logs/windfire-security-server.log`.
 
 ## Testing the Authentication Service
 There's no automated test suite — the [test/](test/) folder contains manual/interactive scripts that exercise a running Authentication Service end-to-end:
@@ -264,6 +279,7 @@ deployment/deploy.sh --help
 * the Windfire Root CA in `$HOME/opt/windfire/ssl/truststore` (create it with [createRootCA.sh](ssl/createRootCA.sh))
 * the Windfire Keycloak Root CA in `$HOME/opt/keycloak/ssl/truststore` (create it with [setupTLS.sh](keycloak/security/setupTLS.sh))
 * `server/config/service_config.json` with the real Keycloak `realm`/`client_id`/`client_secret` of every client service (see [First-time setup](#first-time-setup))
+* an Audience mapper on each of those Keycloak clients, and a `KEYCLOAK_SERVER_URL` that matches the issuer in Keycloak's tokens (see [Token verification](#token-verification)); otherwise `/v1/security/verify` rejects every token
 
 The production certificate and key are generated for you if they are missing. Your local `server/.env` and `server/config/service_config.json` are not copied: the Pi gets its own `.env` built from the template, and the service configuration only as an encrypted credential.
 

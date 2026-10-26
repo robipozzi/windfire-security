@@ -2,6 +2,7 @@ from fastapi import HTTPException, status, Depends # pyright: ignore[reportMissi
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials # pyright: ignore[reportMissingImports]
 from fastapi.routing import APIRouter # pyright: ignore[reportMissingImports]
 from keycloakAuth import KeycloakAuthError, authenticate_user, verify_token
+from config.service_config_reader import ServiceConfigError
 from models.keycloakModels import KeycloakLoginRequest, KeycloakTokenResponse, KeycloakService
 # Initialize logger at the top so it's available everywhere 
 from logger.loggerFactory import logger_factory
@@ -70,8 +71,19 @@ async def verify(tokenValidate: KeycloakService, credentials: HTTPAuthorizationC
         logger.debug(f"---> Calling keycloakAuth verify_token() function <---")
         token_claims = verify_token(credentials.credentials, service=service, method='local')
         return {"status": "valid"}
+    except (KeycloakAuthError, ServiceConfigError) as e:
+        # Log the real cause, but never return it (or the list of configured services) to the caller
+        logger.warning(f"Token verification failed for service {tokenValidate.service}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        logger.error(f"Token verification error for service {tokenValidate.service}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
 # ###############################################################
 # ########### END - Keycloak Authentication endpoints ###########
 # ###############################################################

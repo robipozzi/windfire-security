@@ -2,6 +2,8 @@ import requests # pyright: ignore[reportMissingModuleSource]
 import jwt # pyright: ignore[reportMissingImports]
 import json
 import os
+import threading
+import time
 from typing import Dict, Any
 from datetime import datetime, timedelta
 from config.service_config_reader import serviceConfig
@@ -9,6 +11,13 @@ from config.settings import settings
 # Initialize logger at the top so it's available everywhere 
 from logger.loggerFactory import logger_factory
 logger = logger_factory.get_logger('keycloakAuth')
+
+# JWKS cache shared by all KeycloakAuth instances, keyed by jwks_endpoint
+_JWKS_CACHE_TTL_SECONDS = 600
+# Minimum interval between JWKS fetches for an endpoint, so unknown kids cannot force a Keycloak call per request
+_JWKS_MIN_REFETCH_SECONDS = 30
+_jwks_cache: Dict[str, Dict[str, Any]] = {}  # jwks_endpoint -> {'jwks': ..., 'fetched_at': time.monotonic()}
+_jwks_lock = threading.Lock()
 
 class KeycloakAuthError(Exception):
     """Custom exception for Keycloak authentication errors"""
@@ -360,7 +369,7 @@ class KeycloakAuth:
                 raise KeycloakAuthError("Token has no 'kid' in header")
             
             # Get public keys from Keycloak
-            jwks = self.get_public_keys()
+            jwks = self.get_public_keys(kid)
             
             # Find the matching public key
             public_key_data = None
@@ -417,32 +426,35 @@ class KeycloakAuth:
                 logger.error("Could not convert JWK to public key")
                 raise KeycloakAuthError("Could not convert JWK to public key")
             
-            # Decode and verify token
-            # First try with audience verification
-            try:
-                decoded_token = jwt.decode(
-                    token,
-                    public_key,
-                    algorithms=['RS256'],
-                    audience=self.config.client_id,
-                    options={"verify_signature": True, "verify_aud": True}
-                )
-            except jwt.InvalidAudienceError:
-                # If audience validation fails, try without audience verification
-                logger.warning(f"Token audience mismatch. Expected: {self.config.client_id}. Trying without audience verification...")
-                decoded_token = jwt.decode(
-                    token,
-                    public_key,
-                    algorithms=['RS256'],
-                    options={"verify_signature": True, "verify_aud": False}
-                )
-            
+            # Decode and verify token: signature, audience, issuer and required claims are all enforced
+            issuer = f"{self.config.server_url}/realms/{self.config.realm}"
+            decoded_token = jwt.decode(
+                token,
+                public_key,
+                algorithms=['RS256'],
+                audience=self.config.client_id,
+                issuer=issuer,
+                options={
+                    "verify_signature": True,
+                    "verify_aud": True,
+                    "require": ["exp", "iat", "iss", "aud"]
+                }
+            )
+
             logger.info(f"Token verified successfully for user: {decoded_token.get('preferred_username')}")
             return decoded_token
-            
+
+        except KeycloakAuthError:
+            raise
         except jwt.ExpiredSignatureError:
             logger.error("Token has expired")
             raise KeycloakAuthError("Token has expired")
+        except jwt.InvalidAudienceError:
+            logger.error(f"Token audience mismatch. Expected: {self.config.client_id}")
+            raise KeycloakAuthError("Invalid token audience")
+        except jwt.InvalidIssuerError:
+            logger.error(f"Token issuer mismatch. Expected: {self.config.server_url}/realms/{self.config.realm}")
+            raise KeycloakAuthError("Invalid token issuer")
         except jwt.InvalidTokenError as e:
             logger.error(f"Token verification failed: {str(e)}")
             raise KeycloakAuthError(f"Invalid token: {str(e)}")
@@ -450,34 +462,56 @@ class KeycloakAuth:
             logger.error(f"Token verification error: {str(e)}")
             raise KeycloakAuthError(f"Token verification error: {str(e)}")
 
-    def get_public_keys(self) -> Dict[str, Any]:
+    def get_public_keys(self, kid: str = None) -> Dict[str, Any]:
         """
-        Get public keys for token verification (JWKS)
-        
+        Get public keys for token verification (JWKS), served from a module-level cache
+
+        The cache entry for the JWKS endpoint is refreshed when older than _JWKS_CACHE_TTL_SECONDS.
+        If kid is given and not in the cache, keys are refetched, but at most once
+        every _JWKS_MIN_REFETCH_SECONDS per endpoint.
+
+        Args:
+            kid: Key id the caller needs (optional)
+
         Returns:
             Dict with public keys
-            
+
         Raises:
             KeycloakAuthError: If retrieval fails
         """
         logger.debug(f"---> Function get_public_keys() called <---")
-        logger.info("Fetching public keys (JWKS)")
-        
-        try:
-            response = self.session.get(
-                self.config.jwks_endpoint,
-                timeout=10,
-                verify=self.config.verify
-            )
-            response.raise_for_status()
-            
-            keys = response.json()
-            logger.info(f"Retrieved {len(keys.get('keys', []))} public keys")
-            return keys
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to fetch public keys: {str(e)}")
-            raise KeycloakAuthError(f"Failed to fetch public keys: {str(e)}")
+        endpoint = self.config.jwks_endpoint
+
+        with _jwks_lock:
+            entry = _jwks_cache.get(endpoint)
+            now = time.monotonic()
+            if entry and now - entry['fetched_at'] < _JWKS_CACHE_TTL_SECONDS:
+                cached_kids = {key.get('kid') for key in entry['jwks'].get('keys', [])}
+                if kid is None or kid in cached_kids:
+                    logger.debug("Using cached public keys (JWKS)")
+                    return entry['jwks']
+                if now - entry['fetched_at'] < _JWKS_MIN_REFETCH_SECONDS:
+                    logger.warning(f"kid '{kid}' not in cached JWKS, refetch skipped (last fetch less than {_JWKS_MIN_REFETCH_SECONDS}s ago)")
+                    return entry['jwks']
+                logger.info(f"kid '{kid}' not in cached JWKS, refetching")
+
+            logger.info("Fetching public keys (JWKS)")
+            try:
+                response = self.session.get(
+                    endpoint,
+                    timeout=10,
+                    verify=self.config.verify
+                )
+                response.raise_for_status()
+
+                keys = response.json()
+                logger.info(f"Retrieved {len(keys.get('keys', []))} public keys")
+                _jwks_cache[endpoint] = {'jwks': keys, 'fetched_at': time.monotonic()}
+                return keys
+
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Failed to fetch public keys: {str(e)}")
+                raise KeycloakAuthError(f"Failed to fetch public keys: {str(e)}")
     
     def logout(self, refresh_token: str = None):
         """
@@ -584,7 +618,7 @@ def verify_token(token: str, service: str, method: str = 'local') -> Dict[str, A
     
     Args:
         token: Token to verify
-        config: Keycloak configuration
+        service: Service name, used to look up its Keycloak realm/client in service_config.json
         method: 'local' (default, no special permissions needed) or 'introspect' (requires permissions)
     """
     logger.debug(f"---> Quick function verify_token() called <---")

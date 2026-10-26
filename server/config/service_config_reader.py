@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from logger.loggerFactory import logger_factory
 logger = logger_factory.get_logger('service_config_reader')
 
-class ServiceConfigReader(Exception):
+class ServiceConfigError(Exception):
     """Custom exception for configuration errors"""
     pass
 
@@ -32,7 +32,7 @@ class ServiceConfigReader:
                 (defaults to $SERVICE_CONFIG_FILE, then config/service_config.json)
             
         Raises:
-            ServiceConfigReader: If configuration file is not found or invalid
+            ServiceConfigError: If configuration file is not found or invalid
         """
         # SERVICE_CONFIG_FILE lets systemd point at the decrypted credential (see deployment/raspberry/templates)
         self.config_file = config_file or os.getenv('SERVICE_CONFIG_FILE', 'config/service_config.json')
@@ -44,13 +44,13 @@ class ServiceConfigReader:
         Load configuration from JSON file
         
         Raises:
-            ServiceConfigReader: If file doesn't exist or JSON is invalid
+            ServiceConfigError: If file doesn't exist or JSON is invalid
         """
         logger.info(f"Loading service configuration from: {self.config_file} ...")
         
         # Check if file exists
         if not os.path.exists(self.config_file):
-            raise ServiceConfigReader(f"Configuration file not found: {self.config_file}")
+            raise ServiceConfigError(f"Configuration file not found: {self.config_file}")
         
         try:
             with open(self.config_file, 'r') as f:
@@ -62,9 +62,9 @@ class ServiceConfigReader:
             logger.info(f"  Services: {list(self.config.keys())}")
             
         except json.JSONDecodeError as e:
-            raise ServiceConfigReader(f"Invalid JSON in configuration file: {str(e)}")
+            raise ServiceConfigError(f"Invalid JSON in configuration file: {str(e)}")
         except Exception as e:
-            raise ServiceConfigReader(f"Failed to load configuration: {str(e)}")
+            raise ServiceConfigError(f"Failed to load configuration: {str(e)}")
     
     def _parse_config(self, config_data: Dict[str, Any]):
         """
@@ -74,18 +74,18 @@ class ServiceConfigReader:
             config_data: Raw configuration data from JSON
             
         Raises:
-            ServiceConfigReader: If configuration structure is invalid
+            ServiceConfigError: If configuration structure is invalid
         """
         if not isinstance(config_data, dict):
-            raise ServiceConfigReader("Configuration must be a JSON object")
+            raise ServiceConfigError("Configuration must be a JSON object")
         
         if 'services' not in config_data:
-            raise ServiceConfigReader("Configuration must contain 'services' field")
+            raise ServiceConfigError("Configuration must contain 'services' field")
         
         services = config_data.get('services', {})
         
         if not isinstance(services, dict):
-            raise ServiceConfigReader("'services' field must be a JSON object")
+            raise ServiceConfigError("'services' field must be a JSON object")
         
         if not services:
             logger.info("No services configured in configuration file")
@@ -105,7 +105,7 @@ class ServiceConfigReader:
                 )
                 logger.info(f"Loaded service configuration: {service_name}")
                 
-            except ServiceConfigReader as e:
+            except ServiceConfigError as e:
                 logger.error(f"Invalid configuration for service '{service_name}': {str(e)}")
                 raise
     
@@ -118,22 +118,22 @@ class ServiceConfigReader:
             service_config: Service configuration object
             
         Raises:
-            ServiceConfigReader: If configuration is invalid
+            ServiceConfigError: If configuration is invalid
         """
         if not isinstance(service_config, dict):
-            raise ServiceConfigReader(f"Service '{service_name}' configuration must be a JSON object")
+            raise ServiceConfigError(f"Service '{service_name}' configuration must be a JSON object")
         
         required_fields = ['realm', 'client_id']
         
         for field in required_fields:
             if field not in service_config:
-                raise ServiceConfigReader(f"Service '{service_name}' is missing required field: '{field}'")
+                raise ServiceConfigError(f"Service '{service_name}' is missing required field: '{field}'")
             
             if not isinstance(service_config[field], str):
-                raise ServiceConfigReader(f"Service '{service_name}' field '{field}' must be a string")
+                raise ServiceConfigError(f"Service '{service_name}' field '{field}' must be a string")
             
             if not service_config[field].strip():
-                raise ServiceConfigReader(f"Service '{service_name}' field '{field}' cannot be empty")
+                raise ServiceConfigError(f"Service '{service_name}' field '{field}' cannot be empty")
     
     def get_service(self, service_name: str) -> ServiceConfig:
         """
@@ -146,11 +146,11 @@ class ServiceConfigReader:
             ServiceConfig object
             
         Raises:
-            ServiceConfigReader: If service not found
+            ServiceConfigError: If service not found
         """
         if service_name not in self.config:
             available_services = list(self.config.keys())
-            raise ServiceConfigReader(
+            raise ServiceConfigError(
                 f"Service '{service_name}' not found in configuration. "
                 f"Available services: {available_services}"
             )
@@ -192,7 +192,7 @@ class ServiceConfigReader:
         Reload configuration from file
         
         Raises:
-            ServiceConfigReader: If configuration file is invalid
+            ServiceConfigError: If configuration file is invalid
         """
         logger.info("Reloading configuration...")
         self.config.clear()
@@ -214,7 +214,7 @@ def load_config(config_file: str = 'config.json') -> ServiceConfigReader:
         ConfigReader instance
         
     Raises:
-        ServiceConfigReader: If configuration is invalid
+        ServiceConfigError: If configuration is invalid
     """
     return ServiceConfigReader(config_file)
 
