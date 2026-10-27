@@ -68,29 +68,82 @@ As we all modern technologies, Keycloak can be deployed in different ways:
 - A comprehensive guide on how to download, install and run Keycloak with OpenJDK is available here https://www.keycloak.org/getting-started/getting-started-zip
 - A comprehensive guide on how to run Keycloak in Docker is available on Keycloak official website https://www.keycloak.org/getting-started/getting-started-docker.
 
-A convenient script **[start-keycloak.sh](keycloak/start-keycloak.sh)** is provided to run Keycloak in one of the following mode
+All Keycloak scripts read their settings from **[common.sh](common.sh)**. `KEYCLOAK_VERSION` (*26.8.1*) is the single source of the local version, and `KEYCLOAK_HOME` (`~/software/keycloak-$KEYCLOAK_VERSION`) and the Docker image version derive from it. On raspberry01 the version is `keycloak_version` in **[conf/raspberry-config.yml](keycloak/deployment/raspberry/conf/raspberry-config.yml)**.
+
+The procedures under **[keycloak/deployment/](keycloak/deployment/)** are:
+
+| Script | What it does |
+|---|---|
+| [install-keycloak.sh](keycloak/deployment/install-keycloak.sh) `[1\|2] [--side-by-side]` | Fresh install on 1. Raspberry or 2. localhost |
+| [upgrade-keycloak.sh](keycloak/deployment/upgrade-keycloak.sh) | Upgrades the Keycloak installed on raspberry01 |
+| [deploy-keycloak-tls.sh](keycloak/deployment/deploy-keycloak-tls.sh) | Deploys a new raspberry01 server certificate |
+| [uninstall-keycloak.sh](keycloak/deployment/uninstall-keycloak.sh) `[-y]` | Removes Keycloak from raspberry01 |
+
+#### Run Keycloak locally
+**[start-keycloak.sh](keycloak/start-keycloak.sh)** `[1|2|3]` runs Keycloak in one of these modes, taken from the menu or from the argument:
 
 ![](img/Select_how_to_run_keycloak.png)
 
-#### Run Keycloak as server on localhost
-In case *option 1* is selected, the script just runs the **<KEYCLOAK_HOME>/bin/kc.sh** command provided by Keycloak; **KEYCLOAK_HOME** needs to be set in **[common.sh](common.sh)** to point to actual Keycloak installation directory on your platform.
+1. **Server on localhost (no TLS)**: `kc.sh start-dev`, Admin console on http://localhost:8080/admin.
+2. **Server on localhost (TLS enabled)**: `kc.sh start` with the localhost PEM certificate, Admin console on https://localhost:8443/admin (see [TLS](#secure-and-run-keycloak-server-with-tls-self-signed-certificate) below).
+3. **Docker**: see [Run Keycloak on Docker](#run-keycloak-on-docker).
 
-Keycloak Admin console will respond on http://localhost:8080/admin. The first time you launch it, you will need to create an admin user that will secure all the following accesses, follow the instructions at *https://www.keycloak.org/getting-started/getting-started-zip* to create admin credentials.
+Options 1 and 2 check that `KEYCLOAK_HOME` holds a Keycloak installation (otherwise they point to `install-keycloak.sh 2`) and that Java 17 or later is available. On the first start, when `KEYCLOAK_HOME/data` does not exist yet, the script asks for the password of the temporary admin user (`admin`). It passes the password to Keycloak as `KC_BOOTSTRAP_ADMIN_USERNAME`/`KC_BOOTSTRAP_ADMIN_PASSWORD` environment variables, never on the command line. Log in with it, create a permanent admin user and delete the temporary one.
 
-#### Install and run Keycloak as server on a Raspberry Pi box
-The [keycloak/deployment/raspberry/](keycloak/deployment/raspberry/) folder contains Ansible playbooks that automate the OS-level prerequisites and the Keycloak distribution download for a Raspberry Pi, configured via **[conf/raspberry-config.yml](keycloak/deployment/raspberry/conf/raspberry-config.yml)**:
+#### Install Keycloak from scratch
+**[install-keycloak.sh](keycloak/deployment/install-keycloak.sh)** installs Keycloak on a fresh platform with Ansible. The platform comes from the menu or the first argument:
 
 ```bash
-cd keycloak/deployment/raspberry
-./install-raspberry.sh   # runs raspberry.yaml: updates apt cache, upgrades packages, installs OpenJDK
-./install-keycloak.sh    # runs keycloak.yaml: downloads and unpacks the Keycloak 25.0.2 zip to /opt/keycloak,
-                          # and copies keycloak_scripts/ to ~/keycloak on the Pi
-./uninstall-keycloak.sh  # removes the installed Keycloak directory and utility scripts
+cd keycloak/deployment
+./install-keycloak.sh 1    # Raspberry (raspberry01)
+./install-keycloak.sh 2    # localhost
 ```
 
-sudo on raspberry01/raspberry02 requires the `pi` password, so these playbooks always ask for it (`BECOME password:`, via `-K` and `become_ask_pass=True` in **[ansible.cfg](keycloak/deployment/raspberry/ansible.cfg)**).
+Both playbooks start with pre-flight checks. **If Keycloak is already installed, they print an alert, point to the upgrade procedure and stop without changing anything (exit code 0).**
 
-Everything past the unpack step — generating the TLS keystore, enabling/disabling TLS, and starting Keycloak (dev mode, TLS, or Docker) with an admin user — is still manual: SSH onto the Pi and run the scripts copied under `~/keycloak` (source in **[keycloak_scripts/](keycloak/deployment/raspberry/keycloak_scripts/)**), which mirror **[setupKeycloakMode.sh](keycloak/setupKeycloakMode.sh)** and **[start-keycloak.sh](keycloak/start-keycloak.sh)** described above — they `read -s` for credentials interactively and background the process with `&` (no systemd unit, so Keycloak won't survive a reboot).
+**1. Raspberry** runs **[keycloak-install.yaml](keycloak/deployment/raspberry/keycloak-install.yaml)** against the `identitymanager` inventory group (raspberry01). sudo on the Pis requires the `pi` password, so it always asks for it (`BECOME password:`, via `-K` and `become_ask_pass=True` in **[ansible.cfg](keycloak/deployment/raspberry/ansible.cfg)**). The script first asks for the username (default `admin`) and password of a temporary admin user. The playbook then:
+
+1. **Pre-flight**: Keycloak counts as installed if any of these exist: the `keycloak` systemd unit, `/etc/keycloak/keycloak.conf`, a `/opt/keycloak/keycloak-*` folder or the `keycloak` user. In that case it alerts and stops, pointing to `upgrade-keycloak.sh` (or `uninstall-keycloak.sh` to start over). Otherwise it checks that port 8443 is free on the Pi, and that the raspberry01 certificate, key and Windfire Keycloak Root CA exist on your machine. Issue them with `keycloak/security/setupTLS.sh 2 3` first.
+2. **OS prerequisites** (**[raspberry.yaml](keycloak/deployment/raspberry/raspberry.yaml)**): apt update and upgrade, then `openjdk-21-jdk-headless` (`openjdk-17-jdk-headless` if the OS release has no 21).
+3. **Install**: creates the `keycloak` system user and group. It downloads `keycloak-<version>.tar.gz`, checks it against the published `.sha1` and extracts it to `/opt/keycloak/keycloak-<version>`. It then writes `/etc/keycloak/keycloak.conf` (hostname `https://raspberry01:8443`, HTTPS only, PEM certificate, H2 `dev-file` database) and the `keycloak` systemd unit (`kc.sh start --optimized`, enabled at boot, no admin credentials). Finally it copies the certificate and key to `/etc/keycloak/tls`, runs `kc.sh build`, and creates the temporary admin with `kc.sh bootstrap-admin user`. The credentials reach the Pi as environment variables only.
+4. **TLS and first start** (**[keycloak-tls-deploy.yaml](keycloak/deployment/raspberry/keycloak-tls-deploy.yaml)**): verifies the certificate chain and key, starts Keycloak and waits for `https://raspberry01:8443/realms/master/` with the Root CA.
+
+Then log in to https://raspberry01:8443/admin with the temporary admin, create a permanent admin user and delete the temporary one. The install does not create the `windfire` realm or its clients: create or import them (each client needs an Audience mapper, see [Token verification](#token-verification)).
+
+**2. localhost** runs **[localhost/keycloak-install.yaml](keycloak/deployment/localhost/keycloak-install.yaml)** without sudo. It installs `KEYCLOAK_VERSION` in `KEYCLOAK_HOME` (from [common.sh](common.sh)):
+
+1. **Pre-flight**: if `KEYCLOAK_HOME` exists, it alerts and stops. If another `keycloak-*` version is installed next to it, it alerts and stops too; rerun with `--side-by-side` to install the new version beside it. There is no in-place upgrade on localhost: set `KEYCLOAK_VERSION` to the new version and install it side by side (the realms in the old `data/` are not copied). It also checks Java 17 or later and `unzip`.
+2. **Install**: downloads `keycloak-<version>.zip`, checks it against the published `.sha1` and unzips it. If the localhost certificate from `setupTLS.sh 2 1` exists, it copies it to `KEYCLOAK_HOME/conf/tls` for `start-keycloak.sh 2`.
+
+#### Uninstall Keycloak from raspberry01
+**[uninstall-keycloak.sh](keycloak/deployment/uninstall-keycloak.sh)** asks you to type `raspberry01` to confirm (or pass `-y`). It runs **[keycloak-uninstall.yaml](keycloak/deployment/raspberry/keycloak-uninstall.yaml)**, which stops and disables the unit and removes the unit and its drop-ins, `/etc/keycloak` and the leftover `~/keycloak` scripts. It also removes the `keycloak` user and group, and `/opt/keycloak`: **every installed version, the realms database, and the upgrade backups and exports**.
+
+#### Upgrade Keycloak on raspberry01
+On raspberry01 Keycloak runs only as the `keycloak` systemd unit, configured by `/etc/keycloak/keycloak.conf`. The unit must not set `KEYCLOAK_ADMIN`/`KEYCLOAK_ADMIN_PASSWORD`, because the admin user already exists in the database.
+
+**[upgrade-keycloak.sh](keycloak/deployment/upgrade-keycloak.sh)** asks for the target version (default: `keycloak_version` from `raspberry-config.yml`, *26.8.1*), checks its format and runs **[keycloak-upgrade.yaml](keycloak/deployment/raspberry/keycloak-upgrade.yaml)**:
+
+```bash
+cd keycloak/deployment
+./upgrade-keycloak.sh
+```
+
+The playbook:
+
+1. **Pre-flight**: reads the current `kc.sh` and version from the unit's `ExecStart` (if there is none, it points to `install-keycloak.sh 1`). It stops at once if that is already the target version.
+   - It fails on a downgrade, or if `/opt/keycloak` has less free space than twice the current install plus 300 MB.
+   - It fails if `keycloak.conf` uses options removed in Keycloak 26 (`hostname-url`, `hostname-admin-url`, `hostname-path`, `hostname-port`, `hostname-strict-backchannel`, `hostname-strict-https`, `proxy=`, `features=...hostname:v1`), or if Java is older than 17.
+   - It records the `windfire` realm issuer, verified with the Windfire Keycloak Root CA. If the realm does not exist yet, it warns and skips the issuer check.
+2. **Backup and export**: stops Keycloak and tars the current install (with `data/`) and `/etc/keycloak` into `/opt/keycloak/backup-<timestamp>.tgz` (mode 0600). It then runs `kc.sh export --users realm_file` into `/opt/keycloak/export-<timestamp>`.
+3. **Install side by side**: downloads `keycloak-<version>.tar.gz` from the GitHub release, checks it against the published `.sha1` and extracts it to `/opt/keycloak/keycloak-<version>`. It **copies** `data/` there, plus any custom `providers/` and `themes/`, never `conf/`. The old install stays untouched as a rollback.
+4. **Configure**:
+   - Only when upgrading from a version older than 26.2 with the default H2 database (`db=dev-file` or no `db=`), it sets `db-username=sa`/`db-password=password` in `keycloak.conf`. Keycloak 26.2 changed the H2 default credentials, and those were the old defaults.
+   - It removes any `KEYCLOAK_ADMIN*` variables from the unit.
+   - It points `ExecStart` at the new `kc.sh` with the drop-in `/etc/systemd/system/keycloak.service.d/10-keycloak-version.conf`.
+   - It runs `kc.sh build` if `ExecStart` uses `--optimized`.
+5. **Start and verify**: waits up to 10 minutes for `https://raspberry01:8443/realms/master/` (the first start migrates the database) and checks that the `windfire` issuer is unchanged.
+
+If anything fails after Keycloak is stopped, the playbook restores `keycloak.conf` and the previous drop-in, then restarts the old version on its own `data/`. Once the new version is validated, delete the old `/opt/keycloak/keycloak-<old version>` by hand.
 
 #### Secure and run Keycloak server with TLS self signed certificate
 Keycloak can be configured to run with TLS enabled, loading the required certificate infrastructure using files in PEM format or from a Java Keystore. When both alternatives are configured, the PEM files takes precedence over the Java Keystores.
@@ -145,13 +198,14 @@ Keycloak Admin console will respond on https://localhost:8443/admin. Browsers wi
 #### Run Keycloak on Docker
 In case Docker is selected, Keycloak will run with the following default parameters values:
 * **Keycloak Docker Image** set to *quay.io/keycloak/keycloak*
-* **Keycloak Docker Image version** set to *23.0.3*
+* **Keycloak Docker Image version** set to `KEYCLOAK_VERSION` (*26.8.1*)
 * **Keycloak Container name** set to *keycloak*
 * **Keycloak Admin console username** set to *admin*
+* **Host port** set to `KEYCLOAK_PORT` if exported in your shell (e.g. `export KEYCLOAK_PORT=8081`), otherwise *8080*
 
-The script will require the Password for Keycloak Admin console, and it also relies on **`KEYCLOAK_PORT`** being exported in your shell beforehand (it has no default in [common.sh](common.sh)) — e.g. `export KEYCLOAK_PORT=8081` — otherwise `docker run -p :8080` leaves Docker to assign a random host port.
+The script checks that Docker is installed and running. If a container named *keycloak* already exists, it offers to start it again instead of creating a new one. Otherwise it asks for the password of the temporary admin user and passes it to the container as `KC_BOOTSTRAP_ADMIN_USERNAME`/`KC_BOOTSTRAP_ADMIN_PASSWORD`. Only the variable names appear on the `docker run` command line; the values come from the environment.
 
-With `KEYCLOAK_PORT` set, once the container is running, Keycloak Admin Console will be available at **http://localhost:$KEYCLOAK_PORT/admin**.
+Once the container is running, Keycloak Admin Console will be available at **http://localhost:$KEYCLOAK_PORT/admin**.
 
 #### Test Keycloak functioning
 A convenient script **[testKeycloak.sh](keycloak/test/testKeycloak.sh)** is provided to run a simple curl command to authenticate with Keycloak and get back the authentication token to verify everything is setup and works fine.

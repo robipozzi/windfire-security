@@ -24,7 +24,15 @@
     ########################
     ##### Java Section #####
     ########################
-    - name: Install OpenJDK
+    - name: Check if the OS release provides OpenJDK 21
+      command: apt-cache policy openjdk-21-jdk-headless
+      register: jdk21_policy
+      changed_when: false
+      check_mode: false
+    - name: Choose headless OpenJDK package (21 if available, otherwise 17)
+      set_fact:
+        jdk_package: "{{ (jdk21_policy.stdout is search('Candidate: (?!\\(none\\))')) | ternary('openjdk-21-jdk-headless', 'openjdk-17-jdk-headless') }}"
+    - name: Install OpenJDK ({{ jdk_package }})
       apt:
-        name: default-jdk
+        name: "{{ jdk_package }}"
         state: present

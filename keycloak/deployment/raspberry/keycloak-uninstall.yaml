@@ -1,19 +1,44 @@
---- # Ansible Playbook to configure a set of Raspberry PIs in a consistent and repeatable way
-# Software installation and configuration for Raspberry PI box
-- hosts: raspberry_identitymanager
+--- # Ansible Playbook to remove Keycloak from raspberry01, run by uninstall-keycloak.sh
+# Stop and disable the systemd unit, remove unit, drop-ins, /etc/keycloak, /opt/keycloak (backups and exports included),
+# legacy utility scripts, then the keycloak user and group
+- hosts: identitymanager
   remote_user: "{{ user }}"
   become: yes
   vars:
     src_dir: "{{ playbook_dir }}"
-    mode: u=rwx
   vars_files:
     - "{{ src_dir }}/conf/raspberry-config.yml"
+    - "{{ src_dir }}/conf/keycloak-tls-config.yml"
   tasks:
-    - name: Remove "{{ remote_directory }}" remote directory
+    - name: Stop and disable Keycloak
+      systemd:
+        name: "{{ keycloak_service }}"
+        state: stopped
+        enabled: no
+      failed_when: false  # partial install: the unit may not exist
+    - name: Remove Keycloak systemd unit and drop-ins
       file:
-        path: "{{ remote_directory }}"
+        path: "{{ item }}"
         state: absent
-    - name: Remove "{{ remote_keycloak_utils_dir }}" remote directory
+      loop:
+        - "/etc/systemd/system/{{ keycloak_service }}.service"
+        - "/etc/systemd/system/{{ keycloak_service }}.service.d"
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+    - name: Remove Keycloak configuration, installations and legacy utility scripts
       file:
-        path: "{{ remote_keycloak_utils_dir }}"
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ keycloak_conf | dirname }}"
+        - "{{ remote_directory }}"
+        - "{{ remote_keycloak_utils_dir }}"
+    - name: Remove "{{ keycloak_user }}" user
+      user:
+        name: "{{ keycloak_user }}"
+        state: absent
+    - name: Remove "{{ keycloak_group }}" group
+      group:
+        name: "{{ keycloak_group }}"
         state: absent

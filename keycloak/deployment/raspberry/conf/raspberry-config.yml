@@ -3,5 +3,8 @@ group: pi
 remote_home_dir: /home/pi
 remote_keycloak_utils_dir: "{{ remote_home_dir }}/keycloak"
 remote_directory: "/opt/keycloak"
-keycloak_url: "https://github.com/keycloak/keycloak/releases/download/25.0.2/keycloak-25.0.2.zip"
-keycloak_zip: "/tmp/keycloak-25.0.2.zip"
+keycloak_version: "26.8.1"
+keycloak_release_url: "https://github.com/keycloak/keycloak/releases/download/{{ keycloak_version }}"
+keycloak_group: keycloak
+# Fallback only, keycloak-install.yaml discovers JAVA_HOME from the java on the PATH
+java_home_fallback: "/usr/lib/jvm/java-17-openjdk-arm64"

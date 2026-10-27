@@ -41,9 +41,12 @@ WINDFIRE_DEFAULT_TRUSTSTORE_DIR=$HOME/opt/windfire/ssl/truststore
 WINDFIRE_DEFAULT_CERTS_PROD_DIR=$HOME/opt/windfire/ssl/certs/raspberry
 
 # ===== KEYCLOAK SETTINGS VARIABLES =====
-KEYCLOAK_HOME=/Users/robertopozzi/software/keycloak-23.0.3
+# Single source of the local Keycloak version: install-keycloak.sh (localhost), start-keycloak.sh and Docker
+KEYCLOAK_VERSION=26.8.1
+KEYCLOAK_HOME=$HOME/software/keycloak-$KEYCLOAK_VERSION
 KEYCLOAK_DOCKER_IMAGE=quay.io/keycloak/keycloak
-KEYCLOAK_DOCKER_IMAGE_VERSION=23.0.3
+KEYCLOAK_DOCKER_IMAGE_VERSION=$KEYCLOAK_VERSION
+KEYCLOAK_MIN_JAVA_VERSION=17
 KEYCLOAK_CONTAINER_NAME=keycloak
 KEYCLOAK_SERVER_ADDRESS=localhost
 KEYCLOAK_SERVER_PORT=8080
@@ -144,6 +147,21 @@ getCredentials() {
         export USERNAME PASSWORD AUTH_SERVICE_TEST
         break
     done
+}
+
+# Function to check that Java $KEYCLOAK_MIN_JAVA_VERSION or later is available to run Keycloak
+checkJava()
+{
+    local java_bin=java
+    local java_major
+    if [[ -n "$JAVA_HOME" ]]; then
+        java_bin="$JAVA_HOME/bin/java"
+    fi
+    java_major=$("$java_bin" -version 2>&1 | sed -n 's/.*version "\([0-9]*\).*/\1/p' | head -n 1)
+    if [[ -z "$java_major" || "$java_major" -lt $KEYCLOAK_MIN_JAVA_VERSION ]]; then
+        echo -e "${RED}Keycloak needs Java $KEYCLOAK_MIN_JAVA_VERSION or later, found: ${java_major:-none} (install it e.g. with brew install openjdk@21)${RESET}" >&2
+        return 1
+    fi
 }
 
 # Functions to select and set deployment platform

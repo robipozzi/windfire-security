@@ -1,0 +1,395 @@
+--- # Ansible Playbook to upgrade Keycloak on raspberry01 to keycloak_version, side by side with the running version
+# Backup and export, install the new version, copy data/, point the systemd unit at it, restart, roll back on failure
+- hosts: identitymanager
+  remote_user: "{{ user }}"
+  become: yes
+  vars:
+    src_dir: "{{ playbook_dir }}"
+    new_home: "{{ remote_directory }}/keycloak-{{ keycloak_version }}"
+    keycloak_tarball: "/tmp/keycloak-{{ keycloak_version }}.tar.gz"
+    dropin_dir: "/etc/systemd/system/{{ keycloak_service }}.service.d"
+    dropin_file: "{{ dropin_dir }}/10-keycloak-version.conf"
+    # Realm whose issuer must not change (a fresh install has no windfire realm yet: 404 skips the check)
+    keycloak_issuer_realm: windfire
+    issuer_url: "https://{{ inventory_hostname }}:{{ keycloak_https_port }}/realms/{{ keycloak_issuer_realm }}/.well-known/openid-configuration"
+    # Free space needed on remote_directory besides 2x the current install (backup tgz + data/ copy): the new distribution
+    keycloak_upgrade_extra_space_kb: 307200
+    # keycloak.conf options removed in Keycloak 26 (hostname v1 and proxy=)
+    removed_options_regex: '(?m)^[ \t]*(?:hostname-url|hostname-admin-url|hostname-path|hostname-port|hostname-strict-backchannel|hostname-strict-https|proxy)[ \t]*=.*$'
+    removed_features_regex: '(?m)^[ \t]*features[ \t]*=.*hostname:v1.*$'
+    db_regex: '(?m)^[ \t]*db[ \t]*=[ \t]*(\S*)'
+    exec_argv_regex: 'argv\[\]=(.+?) ;'
+    java_version_regex: 'version "(\d+)'
+    # KEYCLOAK_ADMIN, KEYCLOAK_ADMIN_PASSWORD (and KEYCLOAK_ADMIN_USER), quoted or not, in Environment= lines
+    keycloak_admin_env_regex: '[ \t]*(?:"KEYCLOAK_ADMIN\w*=[^"\n]*"|KEYCLOAK_ADMIN\w*=[^ \t\n]*)'
+  vars_files:
+    - "{{ src_dir }}/conf/raspberry-config.yml"
+    - "{{ src_dir }}/conf/keycloak-tls-config.yml"
+  tasks:
+    #################################################
+    ##### Pre-flight checks on running Keycloak #####
+    #################################################
+    - name: Read Keycloak systemd unit ExecStart
+      command: "systemctl show {{ keycloak_service }} -p ExecStart --value"
+      register: keycloak_exec_start
+      changed_when: false
+      check_mode: false
+    - name: Read Keycloak systemd unit Environment
+      command: "systemctl show {{ keycloak_service }} -p Environment --value"
+      register: keycloak_unit_env
+      changed_when: false
+      check_mode: false
+      no_log: true  # may still hold KEYCLOAK_ADMIN_PASSWORD
+    - name: Read Keycloak systemd unit files and working directory
+      command: "systemctl show {{ keycloak_service }} -p FragmentPath -p DropInPaths -p WorkingDirectory"
+      register: keycloak_unit_files
+      changed_when: false
+      check_mode: false
+    - name: Set Keycloak facts from systemd unit
+      set_fact:
+        kc_sh: "{{ keycloak_exec_start.stdout | regex_search('path=([^ ;]+)', '\\1') | default([''], true) | first }}"
+        exec_argv: "{{ keycloak_exec_start.stdout | regex_search(exec_argv_regex, '\\1') | default([''], true) | first }}"
+        keycloak_optimized: "{{ '--optimized' in keycloak_exec_start.stdout }}"
+        unit_files: "{{ ([keycloak_unit_files.stdout | regex_search('(?m)^FragmentPath=(.*)$', '\\1') | default([''], true) | first] + (keycloak_unit_files.stdout | regex_search('(?m)^DropInPaths=(.*)$', '\\1') | default([''], true) | first).split()) | select | list }}"
+        working_dir: "{{ keycloak_unit_files.stdout | regex_search('(?m)^WorkingDirectory=(.*)$', '\\1') | default([''], true) | first }}"
+        backup_stamp: "{{ ansible_facts.date_time.date | replace('-', '') }}-{{ ansible_facts.date_time.hour }}{{ ansible_facts.date_time.minute }}{{ ansible_facts.date_time.second }}"
+    - name: Set Keycloak environment without admin credentials (used by export and build)
+      set_fact:
+        unit_env: "{{ dict(keycloak_unit_env.stdout.split() | reject('match', 'KEYCLOAK_ADMIN') | map('regex_search', '^([^=]+)=(.*)$', '\\1', '\\2') | select | list) }}"
+      no_log: true
+    - name: Fail if kc.sh cannot be found in Keycloak systemd unit
+      assert:
+        that:
+          - kc_sh is search('kc\.sh$')
+          - exec_argv is search('kc\.sh')
+        fail_msg: "Keycloak is not installed on {{ inventory_hostname }} (no kc.sh in the {{ keycloak_service }} systemd unit ExecStart: {{ keycloak_exec_start.stdout | default('', true) }}), install it with keycloak/deployment/install-keycloak.sh 1"
+        quiet: true
+    - name: Set current Keycloak install directory and version
+      set_fact:
+        old_home: "{{ kc_sh | dirname | dirname }}"
+        old_version: "{{ kc_sh | dirname | dirname | basename | regex_search('^keycloak-(\\d+\\.\\d+\\.\\d+)$', '\\1') | default([''], true) | first }}"
+    - name: Fail if the current Keycloak version cannot be read from its install directory
+      assert:
+        that: old_version | length > 0
+        fail_msg: "Cannot read the Keycloak version from {{ old_home }} (expected {{ remote_directory }}/keycloak-<x.y.z>)"
+        quiet: true
+    - name: Stop here if Keycloak already runs {{ keycloak_version }}
+      meta: end_host
+      when: old_home == new_home
+    - name: Fail if {{ keycloak_version }} is older than the installed {{ old_version }}
+      assert:
+        that: keycloak_version is version(old_version, '>')
+        fail_msg: "Keycloak {{ old_version }} is installed, {{ keycloak_version }} would be a downgrade: Keycloak cannot downgrade a migrated database"
+        quiet: true
+    - name: Read free space in "{{ remote_directory }}" and size of "{{ old_home }}"
+      shell: "df -Pk {{ remote_directory }} | awk 'NR==2 {print $4}'; du -sk {{ old_home }} | cut -f1"
+      register: upgrade_space
+      changed_when: false
+      check_mode: false
+    - name: Fail if there is not enough free space for backup, data copy and new version
+      assert:
+        that: (upgrade_space.stdout_lines[0] | int) >= 2 * (upgrade_space.stdout_lines[1] | int) + keycloak_upgrade_extra_space_kb
+        fail_msg: "Not enough free space in {{ remote_directory }}: {{ (upgrade_space.stdout_lines[0] | int) // 1024 }} MB free, {{ (2 * (upgrade_space.stdout_lines[1] | int) + keycloak_upgrade_extra_space_kb) // 1024 }} MB needed. Delete old backups/exports or old installs in {{ remote_directory }}"
+        quiet: true
+    - name: Read "{{ keycloak_conf }}"
+      slurp:
+        src: "{{ keycloak_conf }}"
+      register: keycloak_conf_content
+      no_log: true
+    - name: Find keycloak.conf options removed in Keycloak 26 and current database
+      set_fact:
+        removed_conf_lines: "{{ (keycloak_conf_content.content | b64decode | regex_findall(removed_options_regex)) + (keycloak_conf_content.content | b64decode | regex_findall(removed_features_regex)) }}"
+        current_db: "{{ keycloak_conf_content.content | b64decode | regex_search(db_regex, '\\1') | default([''], true) | first }}"
+    - name: Fail if "{{ keycloak_conf }}" uses options removed in Keycloak 26
+      assert:
+        that: removed_conf_lines | length == 0
+        fail_msg:
+          - "{{ keycloak_conf }} has options removed in Keycloak 26, migrate them to hostname v2 (hostname=<full URL>, hostname-admin=<full URL>, hostname-backchannel-dynamic) and proxy-headers before upgrading:"
+          - "{{ removed_conf_lines }}"
+        quiet: true
+    - name: Read Java version used by Keycloak
+      command: "{{ (unit_env.JAVA_HOME ~ '/bin/java') if 'JAVA_HOME' in unit_env else 'java' }} -version"
+      register: java_version
+      changed_when: false
+      check_mode: false
+    - name: Fail if Java is older than 17
+      assert:
+        that: (java_version.stderr | regex_search(java_version_regex, '\\1') | default(['0'], true) | first | int) >= 17
+        fail_msg: "Keycloak {{ keycloak_version }} needs Java 17 or 21, found: {{ java_version.stderr_lines | first | default('unknown') }}. Run install-raspberry.sh first"
+        quiet: true
+    - name: Check "{{ old_home }}/data" exists
+      stat:
+        path: "{{ old_home }}/data"
+      register: old_data_dir
+    - name: Check "{{ dropin_file }}" exists
+      stat:
+        path: "{{ dropin_file }}"
+      register: dropin_stat
+    - name: Record {{ keycloak_issuer_realm }} realm issuer before the upgrade
+      uri:
+        url: "{{ issuer_url }}"
+        ca_path: "{{ local_root_ca_cert }}"
+        validate_certs: yes
+        return_content: yes
+        status_code: [200, 404]
+      register: issuer_before
+      check_mode: false
+      delegate_to: localhost
+      become: no
+      run_once: true
+    - name: Decide if the old H2 default credentials must be set in keycloak.conf
+      set_fact:
+        h2_credentials_needed: "{{ current_db in ['', 'dev-file'] and old_version is version('26.2.0', '<') }}"
+    - name: Set issuer before the upgrade
+      set_fact:
+        old_issuer: "{{ (issuer_before.status == 200) | ternary(issuer_before.json.issuer | default(''), '') }}"
+    - name: Warn that the issuer check is skipped
+      debug:
+        msg: "WARNING: realm {{ keycloak_issuer_realm }} not found (404), the issuer before/after check is skipped"
+      when: old_issuer | length == 0
+    ######################################################
+    ##### Upgrade Keycloak, rolling back on failure  #####
+    ######################################################
+    - name: Upgrade Keycloak from {{ old_home | basename }} to keycloak-{{ keycloak_version }}
+      block:
+        ######################################
+        ##### Stop, backup and export    #####
+        ######################################
+        - name: Stop Keycloak
+          systemd:
+            name: "{{ keycloak_service }}"
+            state: stopped
+        - name: Backup "{{ old_home }}" and "{{ keycloak_conf | dirname }}" to "{{ remote_directory }}/backup-{{ backup_stamp }}.tgz"
+          # umask 077: the archive holds the TLS key
+          shell: "umask 077 && tar czf {{ remote_directory }}/backup-{{ backup_stamp }}.tgz -C / {{ old_home | regex_replace('^/', '') }} {{ keycloak_conf | dirname | regex_replace('^/', '') }}"
+          args:
+            creates: "{{ remote_directory }}/backup-{{ backup_stamp }}.tgz"
+        - name: Backup "{{ dropin_file }}"
+          copy:
+            src: "{{ dropin_file }}"
+            dest: "{{ dropin_file }}.bak-{{ backup_stamp }}"
+            remote_src: yes
+          when: dropin_stat.stat.exists
+        - name: Ensure "{{ remote_directory }}/export-{{ backup_stamp }}" remote directory exists
+          file:
+            path: "{{ remote_directory }}/export-{{ backup_stamp }}"
+            state: directory
+            owner: "{{ keycloak_user }}"
+            group: "{{ keycloak_group }}"
+            mode: "0700"
+        - name: Export realms and users to "{{ remote_directory }}/export-{{ backup_stamp }}"
+          # --config-file is a kc.sh option, not an export option: it must come before the command
+          command: "{{ kc_sh }} --config-file={{ keycloak_conf }} export --dir {{ remote_directory }}/export-{{ backup_stamp }} --users realm_file"
+          become_user: "{{ keycloak_user }}"
+          environment: "{{ unit_env }}"
+        ############################################
+        ##### Install the new Keycloak version #####
+        ############################################
+        - name: Remove "{{ new_home }}" left by a previous failed upgrade (never the running install)
+          file:
+            path: "{{ new_home }}"
+            state: absent
+          when: new_home != old_home
+        - name: Download Keycloak {{ keycloak_version }} and verify its published checksum
+          get_url:
+            url: "{{ keycloak_release_url }}/keycloak-{{ keycloak_version }}.tar.gz"
+            dest: "{{ keycloak_tarball }}"
+            checksum: "sha1:{{ keycloak_release_url }}/keycloak-{{ keycloak_version }}.tar.gz.sha1"
+        - name: Extract Keycloak {{ keycloak_version }} to "{{ remote_directory }}"
+          unarchive:
+            src: "{{ keycloak_tarball }}"
+            dest: "{{ remote_directory }}"
+            remote_src: yes
+            owner: "{{ keycloak_user }}"
+            group: "{{ keycloak_group }}"
+        - name: Ensure "{{ new_home }}" is owned by "{{ keycloak_user }}"
+          file:
+            path: "{{ new_home }}"
+            state: directory
+            owner: "{{ keycloak_user }}"
+            group: "{{ keycloak_group }}"
+            recurse: yes
+        - name: Remove the downloaded tarball
+          file:
+            path: "{{ keycloak_tarball }}"
+            state: absent
+        ###############################################################
+        ##### Copy data, providers and themes (old install kept)  #####
+        ###############################################################
+        - name: Ensure "{{ new_home }}/data" exists
+          file:
+            path: "{{ new_home }}/data"
+            state: directory
+            owner: "{{ keycloak_user }}"
+            group: "{{ keycloak_group }}"
+          when: old_data_dir.stat.exists
+        - name: Copy "{{ old_home }}/data" to "{{ new_home }}/data"
+          command: "cp -a {{ old_home }}/data/. {{ new_home }}/data/"
+          when: old_data_dir.stat.exists
+        - name: Copy custom providers and themes (anything beyond the distribution README.md)
+          shell: "[ ! -d {{ old_home }}/{{ item }} ] || find {{ old_home }}/{{ item }} -mindepth 1 -maxdepth 1 ! -name README.md -exec cp -a {} {{ new_home }}/{{ item }}/ \\; -print"
+          loop:
+            - providers
+            - themes
+          register: custom_copy
+          changed_when: custom_copy.stdout | length > 0
+        ###########################################################
+        ##### Keep H2 credentials (defaults changed in 26.2)  #####
+        ###########################################################
+        # Only when upgrading from a version older than 26.2: its H2 database was created with sa/password.
+        # A database created by 26.2 or later uses the new defaults, forcing sa/password would lock Keycloak out of it.
+        - name: Set db=dev-file in "{{ keycloak_conf }}"
+          lineinfile:
+            path: "{{ keycloak_conf }}"
+            regexp: '^\s*db\s*='
+            line: "db=dev-file"
+            backup: yes
+          register: kc_conf_db
+          when: h2_credentials_needed | bool
+          no_log: true
+        - name: Set db-username=sa in "{{ keycloak_conf }}"
+          lineinfile:
+            path: "{{ keycloak_conf }}"
+            regexp: '^\s*db-username\s*='
+            line: "db-username=sa"
+            backup: yes
+          register: kc_conf_db_user
+          when: h2_credentials_needed | bool
+          no_log: true
+        - name: Set db-password=password in "{{ keycloak_conf }}"
+          lineinfile:
+            path: "{{ keycloak_conf }}"
+            regexp: '^\s*db-password\s*='
+            line: "db-password=password"
+            backup: yes
+          register: kc_conf_db_pass
+          when: h2_credentials_needed | bool
+          no_log: true
+        - name: Remember keycloak.conf backup
+          set_fact:
+            # Each lineinfile backs up keycloak.conf before its own change: the first backup taken is the original file
+            kc_conf_backup: "{{ [kc_conf_db.backup | default(''), kc_conf_db_user.backup | default(''), kc_conf_db_pass.backup | default('')] | select | first | default('') }}"
+        ###################################################
+        ##### Point the systemd unit at the new kc.sh #####
+        ###################################################
+        - name: Remove KEYCLOAK_ADMIN* variables from Keycloak systemd unit and drop-ins
+          replace:
+            path: "{{ item }}"
+            regexp: "{{ keycloak_admin_env_regex }}"
+            replace: ""
+          loop: "{{ unit_files }}"
+          no_log: true
+        - name: Remove Environment lines left empty
+          lineinfile:
+            path: "{{ item }}"
+            regexp: '^Environment=\s*$'
+            state: absent
+          loop: "{{ unit_files }}"
+        - name: Ensure "{{ dropin_dir }}" exists
+          file:
+            path: "{{ dropin_dir }}"
+            state: directory
+            mode: "0755"
+        - name: Point ExecStart at "{{ new_home }}/bin/kc.sh" with "{{ dropin_file }}"
+          copy:
+            dest: "{{ dropin_file }}"
+            mode: "0644"
+            content: |
+              # Managed by keycloak-upgrade.yaml: runs Keycloak {{ keycloak_version }}
+              [Service]
+              ExecStart=
+              ExecStart={{ exec_argv | replace(kc_sh, new_home ~ '/bin/kc.sh') }}
+              {% if working_dir is search('^' ~ old_home) %}
+              WorkingDirectory={{ working_dir | replace(old_home, new_home) }}
+              {% endif %}
+        - name: Reload systemd
+          systemd:
+            daemon_reload: yes
+        - name: Read Keycloak systemd unit Environment after cleanup
+          command: "systemctl show {{ keycloak_service }} -p Environment --value"
+          register: keycloak_unit_env_after
+          changed_when: false
+          no_log: true
+        - name: Fail if KEYCLOAK_ADMIN* is still set in Keycloak systemd unit
+          assert:
+            that: keycloak_unit_env_after.stdout is not search('KEYCLOAK_ADMIN')
+            fail_msg: "KEYCLOAK_ADMIN* is still set for {{ keycloak_service }} (EnvironmentFile= or a drop-in outside {{ unit_files }}?), remove it by hand"
+            quiet: true
+        - name: Build Keycloak {{ keycloak_version }} (ExecStart uses --optimized)
+          command: "{{ new_home }}/bin/kc.sh --config-file={{ keycloak_conf }} build"
+          become_user: "{{ keycloak_user }}"
+          environment: "{{ unit_env }}"
+          when: keycloak_optimized | bool
+        ############################################
+        ##### Start and verify the new version #####
+        ############################################
+        - name: Start Keycloak {{ keycloak_version }}
+          systemd:
+            name: "{{ keycloak_service }}"
+            state: started
+        - name: Wait for Keycloak over HTTPS (first start migrates the database, up to 10 minutes)
+          uri:
+            url: "https://{{ inventory_hostname }}:{{ keycloak_https_port }}/realms/master/"
+            ca_path: "{{ local_root_ca_cert }}"
+            validate_certs: yes
+          register: keycloak_https_check
+          until: keycloak_https_check.status == 200
+          retries: 60
+          delay: 10
+          delegate_to: localhost
+          become: no
+        - name: Read {{ keycloak_issuer_realm }} realm issuer after the upgrade
+          uri:
+            url: "{{ issuer_url }}"
+            ca_path: "{{ local_root_ca_cert }}"
+            validate_certs: yes
+            return_content: yes
+          register: issuer_after
+          delegate_to: localhost
+          become: no
+          when: old_issuer | length > 0
+        - name: Fail if {{ keycloak_issuer_realm }} realm issuer changed
+          assert:
+            that: issuer_after.json.issuer == old_issuer
+            fail_msg: "{{ keycloak_issuer_realm }} issuer changed from {{ old_issuer }} to {{ issuer_after.json.issuer }}: tokens would fail the auth server issuer check"
+            quiet: true
+          when: old_issuer | length > 0
+      rescue:
+        - name: Restore previous keycloak.conf
+          copy:
+            src: "{{ kc_conf_backup }}"
+            dest: "{{ keycloak_conf }}"
+            remote_src: yes
+          when: kc_conf_backup | default('') | length > 0
+          no_log: true
+        - name: Restore previous "{{ dropin_file }}"
+          copy:
+            src: "{{ dropin_file }}.bak-{{ backup_stamp }}"
+            dest: "{{ dropin_file }}"
+            remote_src: yes
+          when: dropin_stat.stat.exists
+        - name: Remove "{{ dropin_file }}"
+          file:
+            path: "{{ dropin_file }}"
+            state: absent
+          when: not dropin_stat.stat.exists
+        # The previous ExecStart runs the old install with its own, untouched data/
+        - name: Restart Keycloak with previous version
+          systemd:
+            name: "{{ keycloak_service }}"
+            state: restarted
+            daemon_reload: yes
+        - name: Fail after rollback
+          fail:
+            msg: "Keycloak {{ keycloak_version }} did not start, {{ old_home | basename }} restored. Backup: {{ remote_directory }}/backup-{{ backup_stamp }}.tgz, export: {{ remote_directory }}/export-{{ backup_stamp }}. Check: journalctl -u {{ keycloak_service }}"
+    #####################
+    ##### Summary   #####
+    #####################
+    - name: Show upgrade summary
+      debug:
+        msg:
+          - "Keycloak upgraded: {{ old_home }} -> {{ new_home }} (built: {{ keycloak_optimized }})"
+          - "{{ keycloak_issuer_realm }} issuer: {{ old_issuer | default('not checked, realm not found', true) }}"
+          - "Backup: {{ remote_directory }}/backup-{{ backup_stamp }}.tgz, export: {{ remote_directory }}/export-{{ backup_stamp }}"
+          - "keycloak.conf backup: {{ kc_conf_backup | default('none', true) }} (H2 sa/password set: {{ h2_credentials_needed }})"
+          - "{{ old_home }} is kept as a rollback: remove it by hand once {{ keycloak_version }} is validated"
