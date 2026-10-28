@@ -54,6 +54,7 @@ signRootCA()
             -subj "${SUBJECT}" \
             -addext "keyUsage=critical,keyCertSign,cRLSign" \
             -addext "basicConstraints=critical,CA:true" \
+            -addext "subjectKeyIdentifier=hash" \
         || { echo -e "${RED}Error: failed to self-sign Root CA certificate${RESET}" >&2; rm -f "$WINDFIRE_ROOT_CA_CERTIFICATE"; exit 1; }
     echo -e "Windfire Root CA certificate ${BLU}$WINDFIRE_ROOT_CA_CERTIFICATE${RESET} self signed"
     echo 
