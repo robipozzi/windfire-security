@@ -1,0 +1,22 @@
+# Managed by keycloak-install.yaml, keycloak-upgrade.yaml overrides ExecStart with keycloak.service.d/10-keycloak-version.conf
+# No admin credentials here: the first admin is created once by kc.sh bootstrap-admin
+[Unit]
+Description=Keycloak Identity and Access Management
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User={{ keycloak_user }}
+Group={{ keycloak_group }}
+Environment=JAVA_HOME={{ java_home }}
+ExecStart={{ keycloak_home }}/bin/kc.sh --config-file={{ keycloak_conf }} start --optimized
+# The JVM exits with 143 on SIGTERM
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=10
+# The first start after an upgrade migrates the database
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

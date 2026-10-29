@@ -1,5 +1,5 @@
 #!/bin/bash
-source ../common.sh
+source "$(dirname "$0")/../common.sh"
 
 # ##### Variable section - START
 SCRIPT=setupKeycloakMode.sh
@@ -17,7 +17,7 @@ main()
 
 chooseFunction()
 {
-	echo ${GREEN}Choose function : ${RESET}
+	echo "${GREEN}Choose function : ${RESET}"
     echo "${GREEN}1. Enable Keycloak TLS${RESET}"
     echo "${GREEN}2. Disable Keycloak TLS${RESET}"
 	read FUNCTION_CHOICE

@@ -1,0 +1,134 @@
+--- # Ansible Playbook to install Keycloak from scratch on localhost (development)
+# Pre-flight checks, download and verify the Keycloak zip, unpack it to keycloak_home, copy the localhost TLS certificate if available
+# Run by install-keycloak.sh (option 2), which passes keycloak_version and keycloak_home from common.sh
+- hosts: localhost
+  connection: local
+  become: no
+  gather_facts: no
+  vars:
+    keycloak_release_url: "https://github.com/keycloak/keycloak/releases/download/{{ keycloak_version }}"
+    keycloak_zip: "{{ keycloak_home | dirname }}/keycloak-{{ keycloak_version }}.zip"
+    keycloak_min_java_version: 17
+    keycloak_side_by_side: false
+    local_tls_dir: "{{ playbook_dir }}/../../security/tls"
+    keycloak_cert_name: windfire-keycloak
+    java_version_regex: 'version "(\d+)'
+  tasks:
+    #############################
+    ##### Pre-flight checks #####
+    #############################
+    - name: Fail if keycloak_version or keycloak_home is missing
+      assert:
+        that:
+          - keycloak_version is defined and keycloak_version | length > 0
+          - keycloak_home is defined and keycloak_home is search('/keycloak-' ~ keycloak_version ~ '$')
+        fail_msg: "Run this playbook with install-keycloak.sh 2, it passes keycloak_version and keycloak_home (KEYCLOAK_VERSION/KEYCLOAK_HOME in common.sh)"
+        quiet: true
+    - name: Check if Keycloak {{ keycloak_version }} is already installed in "{{ keycloak_home }}"
+      stat:
+        path: "{{ keycloak_home }}"
+      register: keycloak_home_dir
+    - name: Alert, Keycloak {{ keycloak_version }} is already installed
+      debug:
+        msg:
+          - "ALERT: Keycloak {{ keycloak_version }} is already installed in {{ keycloak_home }}, nothing to install."
+          - "Start it with keycloak/start-keycloak.sh (option 1 or 2)."
+          - "To upgrade on localhost, set KEYCLOAK_VERSION in common.sh to the new version and run install-keycloak.sh 2 again:"
+          - "the new version is installed side by side (keycloak/deployment/upgrade-keycloak.sh upgrades raspberry01 only)."
+      when: keycloak_home_dir.stat.exists
+    - name: Stop the fresh installation
+      meta: end_play
+      when: keycloak_home_dir.stat.exists
+    - name: Find other Keycloak versions in "{{ keycloak_home | dirname }}"
+      find:
+        paths: "{{ keycloak_home | dirname }}"
+        patterns: "keycloak-*"
+        file_type: directory
+      register: other_keycloak_dirs
+    - name: Alert, another Keycloak version is already installed
+      debug:
+        msg:
+          - "ALERT: Keycloak is already installed: {{ other_keycloak_dirs.files | map(attribute='path') | join(', ') }}"
+          - "There is no in-place upgrade on localhost (keycloak/deployment/upgrade-keycloak.sh upgrades raspberry01 only)."
+          - "To install Keycloak {{ keycloak_version }} side by side, run: keycloak/deployment/install-keycloak.sh 2 --side-by-side"
+          - "start-keycloak.sh uses KEYCLOAK_HOME from common.sh ({{ keycloak_home }}); the realms in the old data/ are not copied."
+      when: other_keycloak_dirs.files | length > 0 and not keycloak_side_by_side | bool
+    - name: Stop the fresh installation
+      meta: end_play
+      when: other_keycloak_dirs.files | length > 0 and not keycloak_side_by_side | bool
+    - name: Read Java version
+      command: java -version
+      register: java_version
+      changed_when: false
+      check_mode: false
+      failed_when: false
+    - name: Fail if Java is missing or older than {{ keycloak_min_java_version }}
+      assert:
+        that: (java_version.stderr | default('') | regex_search(java_version_regex, '\\1') | default(['0'], true) | first | int) >= keycloak_min_java_version
+        fail_msg: "Keycloak {{ keycloak_version }} needs Java {{ keycloak_min_java_version }} or later, found: {{ java_version.stderr_lines | default(['none']) | first | default('none') }}. Install it e.g. with brew install openjdk@21"
+        quiet: true
+    - name: Check unzip is installed
+      command: which unzip
+      changed_when: false
+      check_mode: false
+    #########################################
+    ##### Install Keycloak on localhost #####
+    #########################################
+    - name: Ensure "{{ keycloak_home | dirname }}" directory exists
+      file:
+        path: "{{ keycloak_home | dirname }}"
+        state: directory
+    - name: Download Keycloak {{ keycloak_version }} and verify its published checksum
+      get_url:
+        url: "{{ keycloak_release_url }}/keycloak-{{ keycloak_version }}.zip"
+        dest: "{{ keycloak_zip }}"
+        checksum: "sha1:{{ keycloak_release_url }}/keycloak-{{ keycloak_version }}.zip.sha1"
+    - name: Unzip Keycloak {{ keycloak_version }} to "{{ keycloak_home | dirname }}"
+      unarchive:
+        src: "{{ keycloak_zip }}"
+        dest: "{{ keycloak_home | dirname }}"
+        remote_src: yes
+        creates: "{{ keycloak_home }}/bin/kc.sh"
+    - name: Remove the downloaded zip file
+      file:
+        path: "{{ keycloak_zip }}"
+        state: absent
+    ############################################################
+    ##### Copy localhost TLS certificate if already issued #####
+    ############################################################
+    - name: Check localhost Keycloak certificate and key (keycloak/security/setupTLS.sh 2 1)
+      stat:
+        path: "{{ local_tls_dir }}/{{ item }}"
+      loop:
+        - "{{ keycloak_cert_name }}.crt"
+        - "{{ keycloak_cert_name }}.key"
+      register: local_tls_files
+    - name: Set TLS availability
+      set_fact:
+        local_tls_available: "{{ local_tls_files.results | selectattr('stat.exists') | list | length == 2 }}"
+    - name: Ensure "{{ keycloak_home }}/conf/tls" directory exists
+      file:
+        path: "{{ keycloak_home }}/conf/tls"
+        state: directory
+        mode: "0700"
+      when: local_tls_available | bool
+    - name: Copy localhost certificate and key to "{{ keycloak_home }}/conf/tls"
+      copy:
+        src: "{{ local_tls_dir }}/{{ item.name }}"
+        dest: "{{ keycloak_home }}/conf/tls/{{ item.name }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { name: "{{ keycloak_cert_name }}.crt", mode: "0644" }
+        - { name: "{{ keycloak_cert_name }}.key", mode: "0600" }
+      loop_control:
+        label: "{{ item.name }}"
+      when: local_tls_available | bool
+    #####################
+    ##### Summary   #####
+    #####################
+    - name: Show installation summary
+      debug:
+        msg:
+          - "Keycloak {{ keycloak_version }} installed in {{ keycloak_home }}"
+          - "TLS: {{ local_tls_available | bool | ternary('certificate and key copied to ' ~ keycloak_home ~ '/conf/tls', 'no localhost certificate, run keycloak/security/setupTLS.sh 2 1 then keycloak/setupKeycloakMode.sh 1') }}"
+          - "Start it with keycloak/start-keycloak.sh 1 (http://localhost:8080) or 2 (https://localhost:8443); on first start it asks for the temporary admin password"

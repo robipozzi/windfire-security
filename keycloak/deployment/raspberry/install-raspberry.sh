@@ -1,1 +1,0 @@
-ansible-playbook -K raspberry.yaml

@@ -1,0 +1,288 @@
+--- # Ansible Playbook to install Keycloak from scratch on raspberry01, run by install-keycloak.sh (option 1)
+# Pre-flight (stop gracefully if Keycloak is already installed), OS prerequisites, Keycloak user, distribution,
+# keycloak.conf, systemd unit, build, temporary admin, then TLS certificate and first start with keycloak-tls-deploy.yaml
+#
+# The temporary admin credentials are read from the controller environment (WINDFIRE_KC_ADMIN_USERNAME/PASSWORD,
+# exported by install-keycloak.sh), never from a command line, keycloak.conf or the systemd unit.
+
+##############################
+##### Play 1: Pre-flight #####
+##############################
+- name: Pre-flight checks for a fresh Keycloak installation
+  hosts: identitymanager
+  remote_user: "{{ user }}"
+  become: yes
+  vars:
+    src_dir: "{{ playbook_dir }}"
+  vars_files:
+    - "{{ src_dir }}/conf/raspberry-config.yml"
+    - "{{ src_dir }}/conf/keycloak-tls-config.yml"
+  tasks:
+    - name: Read Keycloak systemd unit
+      command: "systemctl show {{ keycloak_service }} -p LoadState -p ExecStart"
+      register: keycloak_unit
+      changed_when: false
+      check_mode: false
+    - name: Check "{{ keycloak_conf }}" exists
+      stat:
+        path: "{{ keycloak_conf }}"
+      register: keycloak_conf_file
+    - name: Find Keycloak installations in "{{ remote_directory }}"
+      find:
+        paths: "{{ remote_directory }}"
+        patterns: "keycloak-*"
+        file_type: directory
+      register: keycloak_install_dirs
+    - name: Check "{{ keycloak_user }}" user exists
+      getent:
+        database: passwd
+        key: "{{ keycloak_user }}"
+        fail_key: no
+    - name: List what shows Keycloak is already installed
+      set_fact:
+        keycloak_install_evidence: "{{ evidence | select | list }}"
+      vars:
+        evidence:
+          - "{{ (keycloak_unit.stdout is not search('LoadState=not-found')) | ternary('systemd unit ' ~ keycloak_service ~ ' (' ~ (keycloak_unit.stdout | regex_search('path=([^ ;]+)', '\\1') | default(['no ExecStart'], true) | first) ~ ')', '') }}"
+          - "{{ keycloak_conf_file.stat.exists | ternary(keycloak_conf, '') }}"
+          - "{{ keycloak_install_dirs.files | map(attribute='path') | join(', ') }}"
+          - "{{ (ansible_facts.getent_passwd[keycloak_user] | default(none) is not none) | ternary('user ' ~ keycloak_user, '') }}"
+    - name: Set Keycloak installation status
+      set_fact:
+        keycloak_already_installed: "{{ keycloak_install_evidence | length > 0 }}"
+    - name: Alert, Keycloak is already installed on {{ inventory_hostname }}
+      debug:
+        msg:
+          - "ALERT: Keycloak is already installed on {{ inventory_hostname }}, fresh installation stopped, nothing changed. Found:"
+          - "{{ keycloak_install_evidence }}"
+          - "To upgrade it, run keycloak/deployment/upgrade-keycloak.sh"
+          - "To remove it and install from scratch, run keycloak/deployment/uninstall-keycloak.sh, then install-keycloak.sh 1"
+      when: keycloak_already_installed | bool
+    - name: Stop the fresh installation on {{ inventory_hostname }}
+      meta: end_host
+      when: keycloak_already_installed | bool
+    - name: Fail if port {{ keycloak_https_port }} is already in use
+      wait_for:
+        port: "{{ keycloak_https_port }}"
+        state: stopped
+        timeout: 1
+        msg: "Port {{ keycloak_https_port }} is already in use on {{ inventory_hostname }}, Keycloak could not listen on it"
+    - name: Check local certificate, key and Windfire Keycloak Root CA exist
+      stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ local_certs_dir }}/{{ keycloak_cert_name }}.crt"
+        - "{{ local_certs_dir }}/{{ keycloak_cert_name }}.key"
+        - "{{ local_root_ca_cert }}"
+      register: local_tls_files
+      delegate_to: localhost
+      become: no
+      run_once: true
+    - name: Fail if any local file is missing
+      assert:
+        that: item.stat.exists
+        fail_msg: "{{ item.item }} not found, generate it with keycloak/security/setupTLS.sh (option 2, Production) before installing"
+        quiet: true
+      loop: "{{ local_tls_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      run_once: true
+    - name: Fail if the temporary admin credentials are not set
+      assert:
+        that:
+          - lookup('env', 'WINDFIRE_KC_ADMIN_USERNAME') | length > 0
+          - lookup('env', 'WINDFIRE_KC_ADMIN_PASSWORD') | length > 0
+        fail_msg: "WINDFIRE_KC_ADMIN_USERNAME/WINDFIRE_KC_ADMIN_PASSWORD are not set, run this playbook with keycloak/deployment/install-keycloak.sh 1"
+        quiet: true
+      no_log: true
+
+#######################################################
+##### OS prerequisites: apt upgrade, headless JDK #####
+#######################################################
+- import_playbook: raspberry.yaml
+  when: not (keycloak_already_installed | default(true))
+
+##########################################
+##### Play 2: Install Keycloak       #####
+##########################################
+- name: Install Keycloak {{ keycloak_version }}
+  hosts: identitymanager
+  remote_user: "{{ user }}"
+  become: yes
+  vars:
+    src_dir: "{{ playbook_dir }}"
+    keycloak_home: "{{ remote_directory }}/keycloak-{{ keycloak_version }}"
+    keycloak_tarball: "/tmp/keycloak-{{ keycloak_version }}.tar.gz"
+  vars_files:
+    - "{{ src_dir }}/conf/raspberry-config.yml"
+    - "{{ src_dir }}/conf/keycloak-tls-config.yml"
+  tasks:
+    - name: Install Keycloak {{ keycloak_version }}
+      when: not (keycloak_already_installed | default(true))
+      block:
+        ##########################################
+        ##### Keycloak system user and group #####
+        ##########################################
+        - name: Create "{{ keycloak_group }}" system group
+          group:
+            name: "{{ keycloak_group }}"
+            system: yes
+        - name: Create "{{ keycloak_user }}" system user
+          user:
+            name: "{{ keycloak_user }}"
+            group: "{{ keycloak_group }}"
+            system: yes
+            shell: /usr/sbin/nologin
+            home: "{{ remote_directory }}"
+            create_home: no
+        #######################################
+        ##### Keycloak distribution       #####
+        #######################################
+        - name: Ensure "{{ remote_directory }}" remote directory exists
+          file:
+            path: "{{ remote_directory }}"
+            state: directory
+            owner: "{{ keycloak_user }}"
+            group: "{{ keycloak_group }}"
+            mode: "0750"
+        - name: Download Keycloak {{ keycloak_version }} and verify its published checksum
+          get_url:
+            url: "{{ keycloak_release_url }}/keycloak-{{ keycloak_version }}.tar.gz"
+            dest: "{{ keycloak_tarball }}"
+            checksum: "sha1:{{ keycloak_release_url }}/keycloak-{{ keycloak_version }}.tar.gz.sha1"
+        - name: Extract Keycloak {{ keycloak_version }} to "{{ remote_directory }}"
+          unarchive:
+            src: "{{ keycloak_tarball }}"
+            dest: "{{ remote_directory }}"
+            remote_src: yes
+            owner: "{{ keycloak_user }}"
+            group: "{{ keycloak_group }}"
+            creates: "{{ keycloak_home }}/bin/kc.sh"
+        - name: Ensure "{{ keycloak_home }}" is owned by "{{ keycloak_user }}"
+          file:
+            path: "{{ keycloak_home }}"
+            state: directory
+            owner: "{{ keycloak_user }}"
+            group: "{{ keycloak_group }}"
+            recurse: yes
+        - name: Remove the downloaded tarball
+          file:
+            path: "{{ keycloak_tarball }}"
+            state: absent
+        ##################################
+        ##### keycloak.conf and unit #####
+        ##################################
+        - name: Find JAVA_HOME of the java on the PATH
+          shell: "dirname $(dirname $(readlink -f $(command -v java)))"
+          register: java_home_discovered
+          changed_when: false
+          check_mode: false
+          failed_when: false
+        - name: Set JAVA_HOME
+          set_fact:
+            java_home: "{{ (java_home_discovered.rc == 0 and java_home_discovered.stdout is search('^/')) | ternary(java_home_discovered.stdout, java_home_fallback) }}"
+        - name: Ensure "{{ keycloak_conf | dirname }}" remote directory exists
+          file:
+            path: "{{ keycloak_conf | dirname }}"
+            state: directory
+            owner: root
+            group: "{{ keycloak_group }}"
+            mode: "0750"
+        - name: Create "{{ keycloak_conf }}"
+          template:
+            src: "{{ src_dir }}/templates/keycloak.conf.j2"
+            dest: "{{ keycloak_conf }}"
+            owner: root
+            group: "{{ keycloak_group }}"
+            mode: "0640"
+        - name: Create Keycloak systemd unit
+          template:
+            src: "{{ src_dir }}/templates/keycloak.service.j2"
+            dest: "/etc/systemd/system/{{ keycloak_service }}.service"
+            owner: root
+            group: root
+            mode: "0644"
+        - name: Enable Keycloak at boot (started later by keycloak-tls-deploy.yaml)
+          systemd:
+            name: "{{ keycloak_service }}"
+            enabled: yes
+            daemon_reload: yes
+        #############################################################################
+        ##### TLS certificate and key (bootstrap-admin cannot run without them) #####
+        #############################################################################
+        # Same owner, group and mode as keycloak-tls-deploy.yaml, which then finds them unchanged
+        - name: Ensure "{{ keycloak_tls_dir }}" remote directory exists
+          file:
+            path: "{{ keycloak_tls_dir }}"
+            state: directory
+            owner: "{{ keycloak_tls_owner }}"
+            group: "{{ keycloak_tls_group }}"
+            mode: "0750"
+        - name: Copy server certificate to "{{ keycloak_tls_dir }}"
+          copy:
+            src: "{{ local_certs_dir }}/{{ keycloak_cert_name }}.crt"
+            dest: "{{ keycloak_tls_dir }}/{{ keycloak_cert_name }}.crt"
+            owner: "{{ keycloak_tls_owner }}"
+            group: "{{ keycloak_tls_group }}"
+            mode: "0640"
+        - name: Copy server key to "{{ keycloak_tls_dir }}"
+          copy:
+            src: "{{ local_certs_dir }}/{{ keycloak_cert_name }}.key"
+            dest: "{{ keycloak_tls_dir }}/{{ keycloak_cert_name }}.key"
+            owner: "{{ keycloak_tls_owner }}"
+            group: "{{ keycloak_tls_group }}"
+            mode: "0640"
+          no_log: true
+        #############################################
+        ##### Build and create temporary admin  #####
+        #############################################
+        - name: Build Keycloak {{ keycloak_version }} (the unit starts it --optimized)
+          command: "{{ keycloak_home }}/bin/kc.sh --config-file={{ keycloak_conf }} build"
+          become_user: "{{ keycloak_user }}"
+          environment:
+            JAVA_HOME: "{{ java_home }}"
+        # Not KC_BOOTSTRAP_ADMIN_*: Keycloak also reads those as configuration and would try to create the user twice
+        - name: Create temporary admin user
+          command: "{{ keycloak_home }}/bin/kc.sh --config-file={{ keycloak_conf }} bootstrap-admin user --optimized --username:env WINDFIRE_KC_ADMIN_USERNAME --password:env WINDFIRE_KC_ADMIN_PASSWORD --no-prompt"
+          become_user: "{{ keycloak_user }}"
+          environment:
+            JAVA_HOME: "{{ java_home }}"
+            WINDFIRE_KC_ADMIN_USERNAME: "{{ lookup('env', 'WINDFIRE_KC_ADMIN_USERNAME') }}"
+            WINDFIRE_KC_ADMIN_PASSWORD: "{{ lookup('env', 'WINDFIRE_KC_ADMIN_PASSWORD') }}"
+          args:
+            creates: "{{ keycloak_home }}/data/h2"
+          register: bootstrap_admin
+          failed_when: false
+          no_log: true
+        # kc.sh exits 0 even when the user could not be created: check its output, show only the ERROR lines
+        - name: Fail if the temporary admin user was not created
+          fail:
+            msg: "kc.sh bootstrap-admin failed (rc={{ bootstrap_admin.rc }}): {{ (bootstrap_admin.stdout_lines + bootstrap_admin.stderr_lines) | select('search', 'ERROR') | list }}"
+          when: bootstrap_admin is not skipped and (bootstrap_admin.rc != 0 or 'Created temporary admin user' not in bootstrap_admin.stdout)
+
+##############################################################################
+##### TLS certificate, first start and HTTPS check (rollback on failure) #####
+##############################################################################
+- import_playbook: keycloak-tls-deploy.yaml
+  when: not (keycloak_already_installed | default(true))
+
+###########################
+##### Play 3: Summary #####
+###########################
+- name: Keycloak installation summary
+  hosts: identitymanager
+  gather_facts: no
+  vars:
+    src_dir: "{{ playbook_dir }}"
+  vars_files:
+    - "{{ src_dir }}/conf/raspberry-config.yml"
+    - "{{ src_dir }}/conf/keycloak-tls-config.yml"
+  tasks:
+    - name: Show installation summary
+      debug:
+        msg:
+          - "Keycloak {{ keycloak_version }} installed in {{ remote_directory }}/keycloak-{{ keycloak_version }}, running as the {{ keycloak_service }} systemd unit"
+          - "Admin console: https://{{ inventory_hostname }}:{{ keycloak_https_port }}/admin (trust the Windfire Keycloak Root CA)"
+          - "{{ lookup('env', 'WINDFIRE_KC_ADMIN_USERNAME') }} is a TEMPORARY admin: create a permanent admin user in the master realm, then delete it"
+          - "Next: create or import the windfire realm and its clients (audience mappers, see CLAUDE.md)"
+      when: not (keycloak_already_installed | default(true))

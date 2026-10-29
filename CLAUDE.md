@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Windfire Security provides the authentication/authorization infrastructure for the Windfire application suite. It has four parts:
 
 1. **`server/`** — a Python FastAPI "Windfire Security Authentication Service" that fronts Keycloak. Other Windfire services never talk to Keycloak directly; they call this service's `/v1/security/auth` and `/v1/security/verify` endpoints.
-2. **`keycloak/`** — shell scripts to run Keycloak itself (localhost, Docker, or Raspberry Pi) and to configure TLS on the Keycloak server.
+2. **`keycloak/`** — shell scripts and Ansible playbooks to run Keycloak locally (localhost or Docker), to install, upgrade and uninstall it (raspberry01 or localhost), and to configure TLS on the Keycloak server.
 3. **`ssl/`** — shell scripts to generate the Windfire self-signed Root CA and per-host server certificates used across the whole suite (not just this service).
 4. **`sops/`** — `sops-crypt.sh`, a utility to encrypt/decrypt files with sops + age. The default file mode encrypts any file in binary mode to `<file>.sops.json`, with a round-trip check. `-i` encrypts structured YAML/JSON/.env files in place. The age key file defaults to `~/.config/sops/age/keys.txt` via `DEFAULT_SOPS_AGE_KEY_FILE` in `common.sh`. It takes getopts flags (`-e/-d -i -k -f -o -r -y`), and the legacy `encrypt-sops.sh` positional form `1|2 <in> [out]` is still accepted. Used e.g. for the Windfire Keycloak Root CA private key.
 
@@ -46,11 +46,48 @@ cd test
 
 Both prompt interactively for username/password/service (`common.sh`'s `getCredentials`), defaulting service to `windfire-calendar-srv`. `-e {dev|staging|prod}` selects which auth server to target (`prod` points at `raspberry01:8444`, others at `localhost:8443`). Uses a separate `windfire-security-test` venv; `test/installPrereqs.sh` additionally does the editable install of the sibling `windfire-security-client` repo.
 
+## Keycloak install, run, upgrade
+
+All entry points are interactive shell scripts that take the menu choice as an optional argument:
+- `keycloak/start-keycloak.sh [1|2|3]` runs Keycloak locally: 1 is `start-dev`, 2 is `start` with the localhost PEM cert, 3 is Docker.
+- `keycloak/deployment/install-keycloak.sh [1|2] [--side-by-side]` does a fresh install: 1 on raspberry01 (`raspberry/keycloak-install.yaml`), 2 on localhost (`localhost/keycloak-install.yaml`, no sudo, own `localhost/ansible.cfg`).
+- `upgrade-keycloak.sh` upgrades raspberry01 only (`raspberry/keycloak-upgrade.yaml`).
+- `uninstall-keycloak.sh [-y]` removes Keycloak from raspberry01.
+- `deploy-keycloak-tls.sh` deploys a new raspberry01 certificate.
+
+The local version has a single source, `KEYCLOAK_VERSION` in `common.sh`, from which `KEYCLOAK_HOME` (`~/software/keycloak-<v>`) and the Docker tag derive. The Pi's version is `keycloak_version` in `keycloak/deployment/raspberry/conf/raspberry-config.yml`.
+
+Both install playbooks start with a pre-flight that, if Keycloak is already there, prints an ALERT pointing to the upgrade procedure and ends with `meta: end_host`/`end_play` (exit 0, nothing changed). On the Pi, "already there" means any of: the unit, `/etc/keycloak/keycloak.conf`, `/opt/keycloak/keycloak-*`, or the `keycloak` user. The Raspberry install is three plays plus two imports, each guarded by `when: not keycloak_already_installed`:
+1. pre-flight;
+2. `import_playbook: raspberry.yaml` (apt upgrade, headless JDK);
+3. install: `keycloak` user, the tarball checked against its `.sha1`, `templates/keycloak.conf.j2` and `templates/keycloak.service.j2`, the cert copied to `/etc/keycloak/tls`, `kc.sh build`, `kc.sh bootstrap-admin user`;
+4. `import_playbook: keycloak-tls-deploy.yaml` (first start and HTTPS check);
+5. summary.
+
+Gotchas verified against 26.8.1:
+- `--config-file` is a `kc.sh` option and must come before the command (`kc.sh --config-file=X build|export|bootstrap-admin`); after it, it fails with "Unknown option".
+- `bootstrap-admin` cannot run before the TLS files named in `keycloak.conf` exist.
+- `bootstrap-admin` exits 0 even when it fails, so the playbook checks its output.
+- `bootstrap-admin` gets its credentials through `WINDFIRE_KC_ADMIN_*` env vars, never `KC_BOOTSTRAP_ADMIN_*`, which Keycloak also reads as config and would use to create the user twice.
+
+On raspberry01 Keycloak runs only as the `keycloak` systemd unit, and the unit must never carry admin credentials (`KEYCLOAK_ADMIN*`/`KC_BOOTSTRAP_ADMIN_*`). The upgrade playbook:
+- installs the new version side by side in `/opt/keycloak/keycloak-<version>`, after backing up to `/opt/keycloak/backup-<ts>.tgz` and exporting to `/opt/keycloak/export-<ts>`;
+- copies (never moves) `data/`, and points `ExecStart` at the new `kc.sh` via the drop-in `keycloak.service.d/10-keycloak-version.conf`;
+- on failure, restores `keycloak.conf` and the drop-in and restarts the old version.
+
+Its pre-flight:
+- reads the old version from the install folder name and rejects downgrades;
+- checks free disk space;
+- rejects options removed in Keycloak 26 (hostname v1, `proxy=`);
+- checks that the `windfire` issuer is unchanged (skipped with a warning if the realm returns 404).
+
+It sets the old H2 credentials (`sa`/`password`) only when upgrading from a version older than 26.2. A database created by 26.2 or later uses the new defaults.
+
 ## Certificate / TLS setup
 
 `ssl/createRootCA.sh` generates the Windfire self-signed Root CA (`WindfireRootCA.key`/`.crt`) and copies it into `~/opt/windfire/ssl/{keystore,truststore}`. `ssl/generateServerCert.sh` issues per-host server certs off that CA (uses `openssl_config_localhost.ext` / `openssl_config_raspberry.ext` as the SAN config depending on target). These certs are what `SSL_KEYFILE`/`SSL_CERTFILE` in `server/.env` point at, and what `ROOT_CA_PATH` in the test scripts verifies against.
 
-Keycloak's own TLS is set up separately via `keycloak/security/setupTLS.sh`. That script creates a dedicated **Windfire Keycloak Root CA**: the certificate is `~/opt/keycloak/ssl/truststore/WindfireKeycloakRootCA.crt` and the AES-256 key is `~/opt/keycloak/ssl/keystore/WindfireKeycloakRootCA.key`, which the user encrypts with sops/age by hand. The same script issues PEM `windfire-keycloak.key`/`.crt` server certificates off that CA (SANs from `keycloak/security/openssl_config_{localhost,raspberry}.ext`) and checks their expiry. It is independent of the Windfire Root CA above. After functions 1 and 2 it prints a red reminder that the plain CA key must be sops-encrypted, saved in the Password Manager and then deleted from disk. For a local Keycloak, `keycloak/setupKeycloakMode.sh` option 1 copies the localhost `windfire-keycloak.crt/.key` into `$KEYCLOAK_HOME/conf/tls` (`KEYCLOAK_CONF_TLS_DIR`), and `start-keycloak.sh` option 2 starts Keycloak with `--https-certificate-file`/`--https-certificate-key-file`. The Raspberry Pi copies under `keycloak/deployment/raspberry/keycloak_scripts/` are deployment procedures and still use the old keystore flow. The auth server trusts that separate CA when it calls Keycloak's token/userinfo/JWKS endpoints via `KEYCLOAK_VERIFY_SSL_CERTS`/`KEYCLOAK_CA_CERT_PATH` in `server/.env` (see `keycloakAuth.py`'s `KeycloakConfig.verify`) — without a correct `KEYCLOAK_CA_CERT_PATH`, calls to a self-signed Keycloak fail with `SSLCertVerificationError`, which `authRouters.py` surfaces as a misleading 401. `KEYCLOAK_CA_CERT_PATH` must be the Keycloak Root CA (not Keycloak's leaf `server.crt.pem`, which gives "unable to get local issuer certificate") and may use `~`; the Raspberry deploy playbook copies `WindfireKeycloakRootCA.crt` to `~/opt/keycloak/ssl/truststore` on the Pi.
+Keycloak's own TLS is set up separately via `keycloak/security/setupTLS.sh`. That script creates a dedicated **Windfire Keycloak Root CA**: the certificate is `~/opt/keycloak/ssl/truststore/WindfireKeycloakRootCA.crt` and the AES-256 key is `~/opt/keycloak/ssl/keystore/WindfireKeycloakRootCA.key`, which the user encrypts with sops/age by hand. The same script issues PEM `windfire-keycloak.key`/`.crt` server certificates off that CA (SANs from `keycloak/security/openssl_config_{localhost,raspberry}.ext`) and checks their expiry. It is independent of the Windfire Root CA above. After functions 1 and 2 it prints a red reminder that the plain CA key must be sops-encrypted, saved in the Password Manager and then deleted from disk. For a local Keycloak, `keycloak/setupKeycloakMode.sh` option 1 copies the localhost `windfire-keycloak.crt/.key` into `$KEYCLOAK_HOME/conf/tls` (`KEYCLOAK_CONF_TLS_DIR`), and `start-keycloak.sh` option 2 starts Keycloak with `--https-certificate-file`/`--https-certificate-key-file`. The auth server trusts that separate CA when it calls Keycloak's token/userinfo/JWKS endpoints via `KEYCLOAK_VERIFY_SSL_CERTS`/`KEYCLOAK_CA_CERT_PATH` in `server/.env` (see `keycloakAuth.py`'s `KeycloakConfig.verify`) — without a correct `KEYCLOAK_CA_CERT_PATH`, calls to a self-signed Keycloak fail with `SSLCertVerificationError`, which `authRouters.py` surfaces as a misleading 401. `KEYCLOAK_CA_CERT_PATH` must be the Keycloak Root CA (not Keycloak's leaf `server.crt.pem`, which gives "unable to get local issuer certificate") and may use `~`; the Raspberry deploy playbook copies `WindfireKeycloakRootCA.crt` to `~/opt/keycloak/ssl/truststore` on the Pi.
 
 ## Architecture of `server/`
 
