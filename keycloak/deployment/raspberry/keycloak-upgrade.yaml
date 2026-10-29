@@ -103,9 +103,8 @@
     - name: Fail if "{{ keycloak_conf }}" uses options removed in Keycloak 26
       assert:
         that: removed_conf_lines | length == 0
-        fail_msg:
-          - "{{ keycloak_conf }} has options removed in Keycloak 26, migrate them to hostname v2 (hostname=<full URL>, hostname-admin=<full URL>, hostname-backchannel-dynamic) and proxy-headers before upgrading:"
-          - "{{ removed_conf_lines }}"
+        # One string: a list item that templates to a list is rejected by ansible-core 2.19+
+        fail_msg: "{{ keycloak_conf }} has options removed in Keycloak 26, migrate them to hostname v2 (hostname=<full URL>, hostname-admin=<full URL>, hostname-backchannel-dynamic) and proxy-headers before upgrading: {{ removed_conf_lines | join('; ') }}"
         quiet: true
     - name: Read Java version used by Keycloak
       command: "{{ (unit_env.JAVA_HOME ~ '/bin/java') if 'JAVA_HOME' in unit_env else 'java' }} -version"
