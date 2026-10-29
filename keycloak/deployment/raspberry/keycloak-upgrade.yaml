@@ -116,10 +116,24 @@
         that: (java_version.stderr | regex_search(java_version_regex, '\\1') | default(['0'], true) | first | int) >= 17
         fail_msg: "Keycloak {{ keycloak_version }} needs Java 17 or 21, found: {{ java_version.stderr_lines | first | default('unknown') }}. Run install-raspberry.sh first"
         quiet: true
+    - name: Check how "{{ old_home }}" reads its configuration
+      stat:
+        path: "{{ old_home }}/conf/keycloak.conf"
+      register: old_conf_stat
+    - name: Fail if Keycloak does not read "{{ keycloak_conf }}"
+      # Either ExecStart passes --config-file, or the install's conf/keycloak.conf is a symlink to keycloak_conf
+      assert:
+        that: exec_argv is search('--config-file=' ~ keycloak_conf) or (old_conf_stat.stat.islnk | default(false) and old_conf_stat.stat.lnk_source == keycloak_conf)
+        fail_msg: "{{ keycloak_service }} does not read {{ keycloak_conf }} (no --config-file in ExecStart, and {{ old_home }}/conf/keycloak.conf is not a symlink to it): the upgrade would start without its configuration"
+        quiet: true
     - name: Check "{{ old_home }}/data" exists
       stat:
         path: "{{ old_home }}/data"
       register: old_data_dir
+    - name: Record owner and mode of "{{ keycloak_conf }}"
+      stat:
+        path: "{{ keycloak_conf }}"
+      register: kc_conf_stat
     - name: Check "{{ dropin_file }}" exists
       stat:
         path: "{{ dropin_file }}"
@@ -208,6 +222,20 @@
             owner: "{{ keycloak_user }}"
             group: "{{ keycloak_group }}"
             recurse: yes
+        - name: Keep the distribution keycloak.conf as "{{ new_home }}/conf/keycloak.conf.orig"
+          command: "mv {{ new_home }}/conf/keycloak.conf {{ new_home }}/conf/keycloak.conf.orig"
+          args:
+            creates: "{{ new_home }}/conf/keycloak.conf.orig"
+          when: old_conf_stat.stat.islnk | default(false)
+        - name: Link "{{ new_home }}/conf/keycloak.conf" to "{{ keycloak_conf }}" like the old install
+          # ExecStart has no --config-file here: kc.sh reads conf/keycloak.conf, which must carry the TLS and hostname settings
+          file:
+            src: "{{ keycloak_conf }}"
+            dest: "{{ new_home }}/conf/keycloak.conf"
+            state: link
+            owner: "{{ keycloak_user }}"
+            group: "{{ keycloak_group }}"
+          when: old_conf_stat.stat.islnk | default(false)
         - name: Remove the downloaded tarball
           file:
             path: "{{ keycloak_tarball }}"
@@ -359,6 +387,10 @@
             src: "{{ kc_conf_backup }}"
             dest: "{{ keycloak_conf }}"
             remote_src: yes
+            # The keycloak user must still be able to read it, or the old version cannot start either
+            owner: "{{ kc_conf_stat.stat.pw_name }}"
+            group: "{{ kc_conf_stat.stat.gr_name }}"
+            mode: "{{ kc_conf_stat.stat.mode }}"
           when: kc_conf_backup | default('') | length > 0
           no_log: true
         - name: Restore previous "{{ dropin_file }}"
