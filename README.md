@@ -76,6 +76,7 @@ The procedures under **[keycloak/deployment/](keycloak/deployment/)** are:
 |---|---|
 | [install-keycloak.sh](keycloak/deployment/install-keycloak.sh) `[1\|2] [--side-by-side]` | Fresh install on 1. Raspberry or 2. localhost |
 | [upgrade-keycloak.sh](keycloak/deployment/upgrade-keycloak.sh) | Upgrades the Keycloak installed on raspberry01 |
+| [backup-keycloak.sh](keycloak/deployment/backup-keycloak.sh) `[-v <version>] [-y]` | Backs up the Keycloak on raspberry01 to the Mac, encrypted with sops |
 | [deploy-keycloak-tls.sh](keycloak/deployment/deploy-keycloak-tls.sh) | Deploys a new raspberry01 server certificate |
 | [uninstall-keycloak.sh](keycloak/deployment/uninstall-keycloak.sh) `[-y]` | Removes Keycloak from raspberry01 |
 
@@ -144,6 +145,28 @@ The playbook:
 5. **Start and verify**: waits up to 10 minutes for `https://raspberry01:8443/realms/master/` (the first start migrates the database) and checks that the `windfire` issuer is unchanged.
 
 If anything fails after Keycloak is stopped, the playbook restores `keycloak.conf` and the previous drop-in, then restarts the old version on its own `data/`. Once the new version is validated, delete the old `/opt/keycloak/keycloak-<old version>` by hand.
+
+#### Back up Keycloak from raspberry01
+**[backup-keycloak.sh](keycloak/deployment/backup-keycloak.sh)** must run on the Mac (`mac_ip`, *192.168.1.27*, in **[keycloak-backup-config.yml](keycloak/deployment/raspberry/conf/keycloak-backup-config.yml)**). It asks for the Keycloak version (default: `keycloak_version` from `raspberry-config.yml`, *26.8.1*, or pass `-v`). It warns that Keycloak is stopped during the export, asks for confirmation (skip it with `-y`) and runs **[keycloak-backup.yaml](keycloak/deployment/raspberry/keycloak-backup.yaml)**:
+
+```bash
+cd keycloak/deployment
+./backup-keycloak.sh
+```
+
+1. **Pre-flight**: fails, without stopping Keycloak, if the SSH connection does not come from `mac_ip`, if the unit does not run `/opt/keycloak/keycloak-<version>` (exporting with another version would migrate the database), or if `/opt/keycloak` lacks free space.
+2. **Backup**: stops Keycloak, which locks its H2 database while it runs. Into a 0700 staging folder `/opt/keycloak/kc-backup-<timestamp>` it then:
+   - runs `kc.sh export --users realm_file` into `export/`: every realm, `master` included, with its users, credentials, groups, roles, clients, client secrets, client scopes, identity providers and flows;
+   - copies, under `files/` with their absolute paths, the install's `data/` (the raw H2 database), `conf/`, `providers/` and `themes/`, plus `/etc/keycloak` (`keycloak.conf`, TLS certificate and key) and the systemd unit with its drop-ins;
+   - writes `MANIFEST.txt` with versions, realms, `ExecStart` and restore notes.
+
+   Keycloak is started again and checked over HTTPS whatever happens (if it was running).
+3. **Transfer**: archives the staging folder to `/opt/keycloak/kc-backup-<timestamp>.tgz` (mode 0600). It then fetches it to `~/opt/keycloak/backup/keycloak-<version>-backup-<timestamp>.tgz` (folder 0700, file 0600) and compares the sha256 checksums of both copies.
+4. **Cleanup on the Pi**: only once the checksums match does it remove the archive from raspberry01 (`shred -u`). On any earlier failure nothing is removed, and the error lists the leftover paths (they hold secrets: remove them by hand once the backup is safe). The next run's pre-flight warns about any `kc-backup-*` leftover it finds.
+
+Finally the script encrypts the archive with **[sops-crypt.sh](sops/sops-crypt.sh)** `-e -r -y` to `<archive>.sops.json`. The plain archive is deleted only after a verified round trip. Decrypt it with `sops/sops-crypt.sh -d -f <archive>.sops.json`.
+
+**Restore** on a new installation: install Keycloak with `install-keycloak.sh 1`, stop it, and restore `files/etc/keycloak` and the unit files. Then either import the export as the `keycloak` user with `kc.sh --config-file=/etc/keycloak/keycloak.conf import --dir export/ --override true` (works on the same or a newer version), or, with the same version only, copy `files/opt/keycloak/keycloak-<version>/data` over the new `data/`. Start Keycloak again.
 
 #### Secure and run Keycloak server with TLS self signed certificate
 Keycloak can be configured to run with TLS enabled, loading the required certificate infrastructure using files in PEM format or from a Java Keystore. When both alternatives are configured, the PEM files takes precedence over the Java Keystores.

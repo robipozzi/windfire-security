@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Windfire Security provides the authentication/authorization infrastructure for the Windfire application suite. It has four parts:
 
 1. **`server/`** — a Python FastAPI "Windfire Security Authentication Service" that fronts Keycloak. Other Windfire services never talk to Keycloak directly; they call this service's `/v1/security/auth` and `/v1/security/verify` endpoints.
-2. **`keycloak/`** — shell scripts and Ansible playbooks to run Keycloak locally (localhost or Docker), to install, upgrade and uninstall it (raspberry01 or localhost), and to configure TLS on the Keycloak server.
+2. **`keycloak/`** — shell scripts and Ansible playbooks to run Keycloak locally (localhost or Docker), to install, upgrade, back up and uninstall it (raspberry01 or localhost), and to configure TLS on the Keycloak server.
 3. **`ssl/`** — shell scripts to generate the Windfire self-signed Root CA and per-host server certificates used across the whole suite (not just this service).
 4. **`sops/`** — `sops-crypt.sh`, a utility to encrypt/decrypt files with sops + age. The default file mode encrypts any file in binary mode to `<file>.sops.json`, with a round-trip check. `-i` encrypts structured YAML/JSON/.env files in place. The age key file defaults to `~/.config/sops/age/keys.txt` via `DEFAULT_SOPS_AGE_KEY_FILE` in `common.sh`. It takes getopts flags (`-e/-d -i -k -f -o -r -y`), and the legacy `encrypt-sops.sh` positional form `1|2 <in> [out]` is still accepted. Used e.g. for the Windfire Keycloak Root CA private key.
 
@@ -52,6 +52,7 @@ All entry points are interactive shell scripts that take the menu choice as an o
 - `keycloak/start-keycloak.sh [1|2|3]` runs Keycloak locally: 1 is `start-dev`, 2 is `start` with the localhost PEM cert, 3 is Docker.
 - `keycloak/deployment/install-keycloak.sh [1|2] [--side-by-side]` does a fresh install: 1 on raspberry01 (`raspberry/keycloak-install.yaml`), 2 on localhost (`localhost/keycloak-install.yaml`, no sudo, own `localhost/ansible.cfg`).
 - `upgrade-keycloak.sh` upgrades raspberry01 only (`raspberry/keycloak-upgrade.yaml`).
+- `backup-keycloak.sh [-v <version>] [-y]` backs up raspberry01 to the Mac (`raspberry/keycloak-backup.yaml`, settings in `raspberry/conf/keycloak-backup-config.yml`).
 - `uninstall-keycloak.sh [-y]` removes Keycloak from raspberry01.
 - `deploy-keycloak-tls.sh` deploys a new raspberry01 certificate.
 
@@ -82,6 +83,15 @@ Its pre-flight:
 - checks that the `windfire` issuer is unchanged (skipped with a warning if the realm returns 404).
 
 It sets the old H2 credentials (`sa`/`password`) only when upgrading from a version older than 26.2. A database created by 26.2 or later uses the new defaults.
+
+The backup playbook:
+- fails in pre-flight, without stopping Keycloak, if the SSH client address is not `mac_ip` (192.168.1.27) or if the unit does not run `/opt/keycloak/keycloak-<keycloak_version>`;
+- stops Keycloak (H2 is locked while it runs) and, in a 0700 staging folder, runs `kc.sh export --users realm_file` into `export/`, copies the install's `data/`, `conf/`, `providers/`, `themes/`, `/etc/keycloak` and the unit files into `files/` through a tar pipe (keeps absolute paths, owners, symlinks; `cp -a --parents` fails on the Pi under the 0700 staging folder), and writes `MANIFEST.txt`; it restarts Keycloak in `always`;
+- warns in pre-flight about `kc-backup-*` leftovers of failed runs, never removes them;
+- tars the folder, `fetch`es it to `~/opt/keycloak/backup`, compares the sha256 of both copies, and only then removes the archive from the Pi (a `rescue` keeps everything on any failure);
+- writes the local archive path to `~/opt/keycloak/backup/.last-backup`, which `backup-keycloak.sh` reads to run `sops/sops-crypt.sh -e -f <archive> -r -y` (the plain archive is deleted only after a verified round trip).
+
+The Mac's `local_backup_dir` is set in both `keycloak-backup-config.yml` and `backup-keycloak.sh` (passed with `-e`).
 
 ## Certificate / TLS setup
 

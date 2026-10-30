@@ -1,0 +1,285 @@
+--- # Ansible Playbook to back up the Keycloak running on raspberry01 to the Mac, run by backup-keycloak.sh
+# Stop Keycloak, export every realm (users included), copy data/, configuration, TLS files and systemd unit,
+# start Keycloak again, archive, fetch the archive to the Mac, verify its checksum, then remove it from raspberry01.
+# The archive holds secrets (TLS key, client secrets, password hashes): backup-keycloak.sh encrypts it with sops.
+- hosts: identitymanager
+  remote_user: "{{ user }}"
+  become: yes
+  vars:
+    src_dir: "{{ playbook_dir }}"
+    exec_argv_regex: 'argv\[\]=(.+?) ;'
+    java_version_regex: 'version "(\d+[^"]*)"'
+  vars_files:
+    - "{{ src_dir }}/conf/raspberry-config.yml"
+    - "{{ src_dir }}/conf/keycloak-tls-config.yml"
+    - "{{ src_dir }}/conf/keycloak-backup-config.yml"
+  tasks:
+    #################################################
+    ##### Pre-flight checks on running Keycloak #####
+    #################################################
+    - name: Read the address of the Ansible controller
+      command: printenv SSH_CLIENT
+      register: ssh_client
+      changed_when: false
+      check_mode: false
+      failed_when: false
+      become: no
+    - name: Fail if the backup would not be fetched to the Mac ({{ mac_ip }})
+      assert:
+        that: (ssh_client.stdout.split() | first | default('')) == mac_ip
+        fail_msg: "The SSH connection comes from {{ ssh_client.stdout.split() | first | default('an unknown address') }}, not from the Mac {{ mac_ip }}: run backup-keycloak.sh from the Mac, or set mac_ip in conf/keycloak-backup-config.yml"
+        quiet: true
+    - name: Read Keycloak systemd unit ExecStart
+      command: "systemctl show {{ keycloak_service }} -p ExecStart --value"
+      register: keycloak_exec_start
+      changed_when: false
+      check_mode: false
+    - name: Read Keycloak systemd unit Environment
+      command: "systemctl show {{ keycloak_service }} -p Environment --value"
+      register: keycloak_unit_env
+      changed_when: false
+      check_mode: false
+      no_log: true  # may still hold KEYCLOAK_ADMIN_PASSWORD
+    - name: Read Keycloak systemd unit files
+      command: "systemctl show {{ keycloak_service }} -p FragmentPath -p DropInPaths"
+      register: keycloak_unit_files
+      changed_when: false
+      check_mode: false
+    - name: Read Keycloak systemd unit state
+      command: "systemctl is-active {{ keycloak_service }}"
+      register: keycloak_state
+      changed_when: false
+      check_mode: false
+      failed_when: false
+    - name: Set Keycloak facts from systemd unit
+      set_fact:
+        kc_sh: "{{ keycloak_exec_start.stdout | regex_search('path=([^ ;]+)', '\\1') | default([''], true) | first }}"
+        exec_argv: "{{ keycloak_exec_start.stdout | regex_search(exec_argv_regex, '\\1') | default([''], true) | first }}"
+        unit_files: "{{ ([keycloak_unit_files.stdout | regex_search('(?m)^FragmentPath=(.*)$', '\\1') | default([''], true) | first] + (keycloak_unit_files.stdout | regex_search('(?m)^DropInPaths=(.*)$', '\\1') | default([''], true) | first).split()) | select | list }}"
+        keycloak_was_active: "{{ keycloak_state.stdout == 'active' }}"
+        backup_stamp: "{{ ansible_facts.date_time.date | replace('-', '') }}-{{ ansible_facts.date_time.hour }}{{ ansible_facts.date_time.minute }}{{ ansible_facts.date_time.second }}"
+    - name: Set Keycloak environment without admin credentials (used by export)
+      set_fact:
+        unit_env: "{{ dict(keycloak_unit_env.stdout.split() | reject('match', 'KEYCLOAK_ADMIN') | map('regex_search', '^([^=]+)=(.*)$', '\\1', '\\2') | select | list) }}"
+      no_log: true
+    - name: Fail if kc.sh cannot be found in Keycloak systemd unit
+      assert:
+        that: kc_sh is search('kc\.sh$')
+        fail_msg: "Keycloak is not installed on {{ inventory_hostname }} (no kc.sh in the {{ keycloak_service }} systemd unit ExecStart: {{ keycloak_exec_start.stdout | default('', true) }})"
+        quiet: true
+    - name: Set Keycloak install directory, version and backup paths
+      set_fact:
+        keycloak_home: "{{ kc_sh | dirname | dirname }}"
+        running_version: "{{ kc_sh | dirname | dirname | basename | regex_search('^keycloak-(\\d+\\.\\d+\\.\\d+)$', '\\1') | default([''], true) | first }}"
+        staging_dir: "{{ remote_backup_dir }}/kc-backup-{{ backup_stamp }}"
+        remote_archive: "{{ remote_backup_dir }}/kc-backup-{{ backup_stamp }}.tgz"
+        local_archive: "{{ local_backup_dir }}/keycloak-{{ keycloak_version }}-backup-{{ backup_stamp }}.tgz"
+    - name: Fail if Keycloak {{ keycloak_version }} is not the running version
+      # Exporting with another version would migrate (or fail to read) the database
+      assert:
+        that: running_version == keycloak_version
+        fail_msg: "{{ keycloak_service }} runs {{ keycloak_home }} (version {{ running_version | default('unknown', true) }}), not Keycloak {{ keycloak_version }}: back up with the running version, e.g. backup-keycloak.sh -v {{ running_version | default('<x.y.z>', true) }}"
+        quiet: true
+    - name: Set files to back up besides the export
+      set_fact:
+        backup_paths: "{{ [keycloak_home ~ '/conf', keycloak_home ~ '/data', keycloak_home ~ '/providers', keycloak_home ~ '/themes', keycloak_conf | dirname] + unit_files }}"
+    - name: Read free space in "{{ remote_backup_dir }}" and size of the files to back up
+      shell: "df -Pk {{ remote_backup_dir }} | awk 'NR==2 {print $4}'; du -sck {{ backup_paths | join(' ') }} 2>/dev/null | tail -n 1 | cut -f1"
+      register: backup_space
+      changed_when: false
+      check_mode: false
+    - name: Fail if there is not enough free space for staging copy, export and archive
+      assert:
+        that: (backup_space.stdout_lines[0] | int) >= 3 * (backup_space.stdout_lines[1] | int) + keycloak_backup_extra_space_kb
+        fail_msg: "Not enough free space in {{ remote_backup_dir }}: {{ (backup_space.stdout_lines[0] | int) // 1024 }} MB free, {{ (3 * (backup_space.stdout_lines[1] | int) + keycloak_backup_extra_space_kb) // 1024 }} MB needed"
+        quiet: true
+    - name: Find backups left in "{{ remote_backup_dir }}" by failed runs
+      find:
+        paths: "{{ remote_backup_dir }}"
+        patterns: "kc-backup-*"
+        file_type: any
+      register: leftover_backups
+    - name: Warn about backups left by failed runs (never removed automatically, they may be the only copy)
+      debug:
+        msg:
+          - "WARNING: backups left by failed runs on {{ inventory_hostname }}, they hold secrets: remove them by hand once you no longer need them"
+          - "{{ leftover_backups.files | map(attribute='path') | sort | list }}"
+      when: leftover_backups.matched > 0
+    - name: Read Java version used by Keycloak
+      command: "{{ (unit_env.JAVA_HOME ~ '/bin/java') if 'JAVA_HOME' in unit_env else 'java' }} -version"
+      register: java_version
+      changed_when: false
+      check_mode: false
+    #####################################################################
+    ##### Stop, export and copy, then start Keycloak again (always) #####
+    #####################################################################
+    - name: Back up Keycloak {{ keycloak_version }} to "{{ staging_dir }}"
+      block:
+        - name: Ensure "{{ staging_dir }}" exists, readable by "{{ keycloak_user }}" only
+          file:
+            path: "{{ staging_dir }}"
+            state: directory
+            owner: "{{ keycloak_user }}"
+            group: "{{ keycloak_group }}"
+            mode: "0700"
+        - name: Stop Keycloak (the H2 database is locked while it runs)
+          systemd:
+            name: "{{ keycloak_service }}"
+            state: stopped
+        - name: Export every realm with its users, groups, roles, clients and credentials to "{{ staging_dir }}/export"
+          # --config-file is a kc.sh option, not an export option: it must come before the command
+          command: "{{ kc_sh }} --config-file={{ keycloak_conf }} export --dir {{ staging_dir }}/export --users realm_file"
+          become_user: "{{ keycloak_user }}"
+          environment: "{{ unit_env }}"
+        - name: Copy data/, conf/, providers/, themes/, "{{ keycloak_conf | dirname }}" and the systemd unit to "{{ staging_dir }}/files"
+          # tar keeps the absolute paths (owners, modes, symlinks too), so a restore copies files/ back to /
+          # (cp -a --parents fails on the parent folders under the 0700 staging folder)
+          shell: |
+            set -o pipefail
+            umask 077
+            mkdir -p {{ staging_dir }}/files
+            paths=""
+            for p in {{ backup_paths | join(' ') }}; do [ ! -e "$p" ] || paths="$paths ${p#/}"; done
+            tar cf - -C / $paths | tar xpf - -C {{ staging_dir }}/files
+          args:
+            executable: /bin/bash
+        - name: Find exported realms
+          find:
+            paths: "{{ staging_dir }}/export"
+            patterns: "*-realm.json"
+          register: exported_realms
+        - name: Fail if no realm was exported
+          assert:
+            that: exported_realms.matched > 0
+            fail_msg: "kc.sh export wrote no realm to {{ staging_dir }}/export"
+            quiet: true
+        - name: Write "{{ staging_dir }}/MANIFEST.txt"
+          copy:
+            dest: "{{ staging_dir }}/MANIFEST.txt"
+            mode: "0600"
+            content: |
+              Windfire Keycloak backup, written by keycloak-backup.yaml
+              Host:             {{ inventory_hostname }}
+              Date:             {{ ansible_facts.date_time.iso8601 }}
+              Keycloak version: {{ keycloak_version }} ({{ keycloak_home }})
+              Java:             {{ java_version.stderr | regex_search(java_version_regex, '\1') | default(['unknown'], true) | first }}
+              Database:         H2 dev-file in {{ keycloak_home }}/data
+              ExecStart:        {{ exec_argv }}
+              Realms:           {{ exported_realms.files | map(attribute='path') | map('basename') | map('regex_replace', '-realm\.json$', '') | sort | join(', ') }}
+
+              Contents
+                export/           kc.sh export --users realm_file: one <realm>-realm.json per realm (master included)
+                files/            {{ backup_paths | join(', ') }} with their absolute paths
+                MANIFEST.txt      this file
+
+              Restore on a new installation (same Keycloak version {{ keycloak_version }})
+                A) From the export (also works on a newer version, which migrates it):
+                   install Keycloak, stop it, then as {{ keycloak_user }}:
+                   kc.sh --config-file={{ keycloak_conf }} import --dir export/ --override true
+                B) From the raw database (same version only):
+                   stop Keycloak, copy files{{ keycloak_home }}/data to {{ keycloak_home }}/data (owner {{ keycloak_user }})
+                Then restore files{{ keycloak_conf | dirname }} (keycloak.conf, TLS certificate and key, owner {{ keycloak_tls_owner }}:{{ keycloak_tls_group }})
+                and the systemd unit files, run systemctl daemon-reload and start {{ keycloak_service }}.
+      always:
+        - name: Start Keycloak again
+          systemd:
+            name: "{{ keycloak_service }}"
+            state: started
+          when: keycloak_was_active | bool
+        - name: Wait for Keycloak over HTTPS
+          uri:
+            url: "https://{{ inventory_hostname }}:{{ keycloak_https_port }}/realms/master/"
+            ca_path: "{{ local_root_ca_cert }}"
+            validate_certs: yes
+          register: keycloak_https_check
+          until: keycloak_https_check.status == 200
+          retries: 30
+          delay: 10
+          delegate_to: localhost
+          become: no
+          when: keycloak_was_active | bool
+    ###########################################
+    ##### Archive, fetch and verify       #####
+    ###########################################
+    - name: Fetch the backup to the Mac, remove it from {{ inventory_hostname }} only once the copy is verified
+      block:
+        - name: Archive "{{ staging_dir }}" to "{{ remote_archive }}"
+          # umask 077: the archive holds the TLS key, client secrets and password hashes
+          shell: "umask 077 && tar czf {{ remote_archive }} -C {{ remote_backup_dir }} {{ staging_dir | basename }}"
+          args:
+            creates: "{{ remote_archive }}"
+        - name: Remove "{{ staging_dir }}"
+          file:
+            path: "{{ staging_dir }}"
+            state: absent
+        - name: Read checksum of "{{ remote_archive }}"
+          stat:
+            path: "{{ remote_archive }}"
+            get_checksum: yes
+            checksum_algorithm: sha256
+          register: remote_archive_stat
+        - name: Ensure "{{ local_backup_dir }}" local directory exists, readable by you only
+          file:
+            path: "{{ local_backup_dir }}"
+            state: directory
+            mode: "0700"
+          delegate_to: localhost
+          become: no
+        - name: Fetch "{{ remote_archive }}" to "{{ local_archive }}"
+          fetch:
+            src: "{{ remote_archive }}"
+            dest: "{{ local_archive }}"
+            flat: yes
+            validate_checksum: yes
+        - name: Make "{{ local_archive }}" readable by you only
+          file:
+            path: "{{ local_archive }}"
+            mode: "0600"
+          delegate_to: localhost
+          become: no
+        - name: Read checksum of "{{ local_archive }}"
+          stat:
+            path: "{{ local_archive }}"
+            get_checksum: yes
+            checksum_algorithm: sha256
+          register: local_archive_stat
+          delegate_to: localhost
+          become: no
+        - name: Fail if the Mac copy differs from "{{ remote_archive }}"
+          assert:
+            that:
+              - local_archive_stat.stat.exists
+              - local_archive_stat.stat.checksum == remote_archive_stat.stat.checksum
+            fail_msg: "{{ local_archive }} does not match {{ remote_archive }} (sha256 {{ remote_archive_stat.stat.checksum }}), the archive is kept on {{ inventory_hostname }}"
+            quiet: true
+        ###################################################################
+        ##### Mac copy verified: remove the backup from raspberry01   #####
+        ###################################################################
+        - name: Overwrite and remove "{{ remote_archive }}"
+          # Best effort on flash storage (wear levelling may keep old blocks), the file is removed anyway
+          command: "shred -u {{ remote_archive }}"
+        - name: Ensure "{{ remote_archive }}" is gone
+          file:
+            path: "{{ remote_archive }}"
+            state: absent
+        - name: Record the Mac copy for backup-keycloak.sh
+          copy:
+            dest: "{{ local_backup_dir }}/.last-backup"
+            content: "{{ local_archive }}\n"
+            mode: "0600"
+          delegate_to: localhost
+          become: no
+      rescue:
+        - name: Fail and keep the backup on {{ inventory_hostname }}
+          fail:
+            msg: "The backup was not copied to the Mac, nothing was removed from {{ inventory_hostname }}: check {{ staging_dir }} and {{ remote_archive }}, remove them by hand (they hold secrets) once the backup is safe. Failed task: {{ ansible_failed_task.name | default('unknown') }}"
+    #####################
+    ##### Summary   #####
+    #####################
+    - name: Show backup summary
+      debug:
+        msg:
+          - "Keycloak {{ keycloak_version }} backed up to {{ local_archive }} (sha256 {{ local_archive_stat.stat.checksum }})"
+          - "Realms: {{ exported_realms.files | map(attribute='path') | map('basename') | map('regex_replace', '-realm\\.json$', '') | sort | join(', ') }}"
+          - "{{ remote_archive }} removed from {{ inventory_hostname }}"
+          - "Keycloak: {{ (keycloak_was_active | bool) | ternary('started again', 'was not running, left stopped') }}"

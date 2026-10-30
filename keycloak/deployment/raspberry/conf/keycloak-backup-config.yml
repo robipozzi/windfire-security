@@ -1,0 +1,9 @@
+# Keycloak backup settings, used by keycloak-backup.yaml (run by keycloak/deployment/backup-keycloak.sh)
+# The Mac running Ansible: the backup is fetched to it, the playbook fails if the SSH connection comes from another address
+mac_ip: 192.168.1.27
+# Local (controller) folder receiving the backup, mode 0700: only the sops-encrypted archive is kept there
+local_backup_dir: "{{ lookup('env', 'HOME') }}/opt/keycloak/backup"
+# Remote (raspberry01) folder for the staging folder and the archive, both removed once the Mac copy is verified
+remote_backup_dir: /opt/keycloak
+# Free space needed on remote_backup_dir besides 3x the backed up files (staging copy, export, archive)
+keycloak_backup_extra_space_kb: 102400
