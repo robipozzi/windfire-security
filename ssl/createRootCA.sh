@@ -2,6 +2,11 @@
 source ../common.sh
 
 # ***** Create Windfire Root CA
+#
+# Usage: ./createRootCA.sh [test]
+#   (no argument) : create the Windfire Root CA, restricted to WINDFIRE_CA_PERMITTED_NAMES (common.sh)
+#   test          : issue a throwaway certificate for example.com from the existing Root CA and check
+#                   that openssl verify rejects it with a name constraints violation
 
 # ===== VARIABLES =====
 COUNTRY="IT"
@@ -13,10 +18,16 @@ COMMON_NAME="Windfire Root CA"
 EMAIL="r.robipozzi@gmail.com"
 DAYS_VALID=365
 SUBJECT=""
+MODE=$1
 
 # ===== MAIN FUNCTION =====
 main()
 {
+    if [ "$MODE" = "test" ]; then
+        testRootCANameConstraints
+        exit $?
+    fi
+
     SUBJECT="/C=${COUNTRY}/ST=${REGION}/L=${LOCALITY}/O=${ORGANIZATION}/OU=${ORGANIZATIONAL_UNIT}/CN=${COMMON_NAME}/emailAddress=${EMAIL}"
     echo "Subject: ${SUBJECT}"
     
@@ -25,15 +36,21 @@ main()
     
     # 2) Self-sign Windfire root CA certificate
     signRootCA
+
+    # 3) Verify Windfire root CA certificate carries the name constraints
+    verifyRootCANameConstraints
     
-    # 3) Copy Windfire root CA certificate to Windfire truststore
+    # 4) Copy Windfire root CA certificate to Windfire truststore
     copyRootCAToTruststore
 
-    # 4) Copy Windfire root CA key to Windfire keystore
+    # 5) Copy Windfire root CA key to Windfire keystore
     copyRootCAKeyToKeystore
 
-    # 5) Delete Windfire root CA certificate and key from ssl folder
+    # 6) Delete Windfire root CA certificate and key from ssl folder
     deleteRootCAFromSslFolder
+
+    # 7) Print how to trust the new Windfire root CA on this Mac and retire the old one
+    printKeychainTrustInstructions openssl "$WINDFIRE_DEFAULT_TRUSTSTORE_DIR/$WINDFIRE_ROOT_CA_CERTIFICATE" "$COMMON_NAME"
 }
 
 # ===== CREATE WINDFIRE ROOT CA PRIVATE KEY FUNCTION =====
@@ -48,6 +65,8 @@ createRootCAPrivateKey()
 # ===== SELF-SIGN WINDFIRE ROOT CA CERTIFICATE FUNCTION =====
 signRootCA()
 {
+    printPermittedNames
+    NAME_CONSTRAINTS=$(buildNameConstraints) || exit 1
     echo -e "Self signing Windfire Root CA certificate ..."
     openssl req -x509 -new -nodes -key $WINDFIRE_ROOT_CA_KEY -sha256 -days $DAYS_VALID \
             -out $WINDFIRE_ROOT_CA_CERTIFICATE \
@@ -55,9 +74,36 @@ signRootCA()
             -addext "keyUsage=critical,keyCertSign,cRLSign" \
             -addext "basicConstraints=critical,CA:true" \
             -addext "subjectKeyIdentifier=hash" \
+            -addext "nameConstraints=${NAME_CONSTRAINTS}" \
         || { echo -e "${RED}Error: failed to self-sign Root CA certificate${RESET}" >&2; rm -f "$WINDFIRE_ROOT_CA_CERTIFICATE"; exit 1; }
     echo -e "Windfire Root CA certificate ${BLU}$WINDFIRE_ROOT_CA_CERTIFICATE${RESET} self signed"
     echo 
+}
+
+# ===== VERIFY WINDFIRE ROOT CA NAME CONSTRAINTS FUNCTION =====
+verifyRootCANameConstraints()
+{
+    echo -e "Verifying Windfire Root CA name constraints ..."
+    if ! verifyNameConstraints openssl "$WINDFIRE_ROOT_CA_CERTIFICATE"; then
+        echo -e "${RED}Error: Windfire Root CA is not restricted to the Windfire hosts, removing it${RESET}" >&2
+        rm -f "$WINDFIRE_ROOT_CA_CERTIFICATE" "$WINDFIRE_ROOT_CA_KEY"
+        exit 1
+    fi
+    echo
+}
+
+# ===== TEST WINDFIRE ROOT CA NAME CONSTRAINTS FUNCTION =====
+testRootCANameConstraints()
+{
+    local ca_cert="$WINDFIRE_DEFAULT_TRUSTSTORE_DIR/$WINDFIRE_ROOT_CA_CERTIFICATE"
+    local ca_key="$WINDFIRE_DEFAULT_KEYSTORE_DIR/$WINDFIRE_ROOT_CA_KEY"
+    echo -e "${BLU}***** Test Windfire Root CA name constraints *****${RESET}"
+    if [ ! -f "$ca_cert" ] || [ ! -f "$ca_key" ]; then
+        echo -e "${RED}Error: Windfire Root CA not found (expected ${BLU}$ca_cert${RED} and ${BLU}$ca_key${RED}), run ./createRootCA.sh first${RESET}" >&2
+        return 1
+    fi
+    trap 'rm -rf "$NAME_CONSTRAINTS_TEST_DIR"' EXIT
+    testNameConstraints openssl "$ca_cert" "$ca_key"
 }
 
 # ===== COPY WINDFIRE ROOT CA CERTIFICATE TO TRUSTSTORE FUNCTION =====

@@ -40,6 +40,13 @@ WINDFIRE_DEFAULT_KEYSTORE_DIR=$HOME/opt/windfire/ssl/keystore
 WINDFIRE_DEFAULT_TRUSTSTORE_DIR=$HOME/opt/windfire/ssl/truststore
 WINDFIRE_DEFAULT_CERTS_PROD_DIR=$HOME/opt/windfire/ssl/certs/raspberry
 
+# ===== PRIVATE CA NAME CONSTRAINTS VARIABLES =====
+# The only names the Windfire Root CA and the Windfire Keycloak Root CA may issue certificates for
+# (critical nameConstraints extension). Space-separated openssl GeneralNames: to add a host, add it
+# here, then recreate both Root CAs and reissue their server certificates.
+WINDFIRE_CA_PERMITTED_NAMES="DNS:raspberry01 DNS:raspberry02 DNS:localhost IP:127.0.0.1/255.255.255.255"
+NAME_CONSTRAINTS_TEST_DIR=
+
 # ===== KEYCLOAK SETTINGS VARIABLES =====
 # Single source of the local Keycloak version: install-keycloak.sh (localhost), start-keycloak.sh and Docker
 KEYCLOAK_VERSION=26.8.1
@@ -118,6 +125,120 @@ getEnvFileValue()
     value=${value#[\"\']}
     value=${value%[\"\']}
     echo "$value"
+}
+
+# Function to build the openssl nameConstraints extension value from WINDFIRE_CA_PERMITTED_NAMES
+buildNameConstraints()
+{
+    local name
+    local value="critical"
+    if [[ -z "${WINDFIRE_CA_PERMITTED_NAMES// /}" ]]; then
+        echo -e "${RED}Error: WINDFIRE_CA_PERMITTED_NAMES in common.sh is empty${RESET}" >&2
+        return 1
+    fi
+    for name in $WINDFIRE_CA_PERMITTED_NAMES; do
+        value="${value},permitted;${name}"
+    done
+    echo "$value"
+}
+
+# Function to print the names a Root CA is going to be restricted to
+printPermittedNames()
+{
+    local name
+    echo -e "The Root CA will be restricted (critical nameConstraints) to these names, from ${BOLD}WINDFIRE_CA_PERMITTED_NAMES${RESET} in common.sh:"
+    for name in $WINDFIRE_CA_PERMITTED_NAMES; do
+        echo -e "    ${BLU}${name}${RESET}"
+    done
+}
+
+# Function to check that a CA certificate carries the critical nameConstraints extension with every permitted name
+# Usage: verifyNameConstraints <openssl binary> <CA certificate>
+verifyNameConstraints()
+{
+    local openssl_bin=$1
+    local cert=$2
+    local ext
+    local name
+    ext=$("$openssl_bin" x509 -in "$cert" -noout -ext nameConstraints 2>/dev/null)
+    if ! grep -q "Name Constraints: critical" <<< "$ext" || ! grep -q "Permitted:" <<< "$ext"; then
+        echo -e "${RED}Error: critical nameConstraints extension not found in ${BLU}$cert${RESET}" >&2
+        return 1
+    fi
+    for name in $WINDFIRE_CA_PERMITTED_NAMES; do
+        if ! grep -qF "$name" <<< "$ext"; then
+            echo -e "${RED}Error: permitted name ${BLU}$name${RED} missing from the nameConstraints extension of ${BLU}$cert${RESET}" >&2
+            return 1
+        fi
+    done
+    echo "$ext"
+    echo -e "${GREEN}OK: nameConstraints extension present in $cert${RESET}"
+}
+
+# Function to check that a CA refuses a name outside WINDFIRE_CA_PERMITTED_NAMES: issues a throwaway certificate
+# for example.com, checks that openssl verify rejects it with a name constraints violation, then deletes it.
+# The caller's EXIT trap must remove NAME_CONSTRAINTS_TEST_DIR, in case the script is interrupted.
+# Usage: testNameConstraints <openssl binary> <CA certificate> <CA private key>
+testNameConstraints()
+{
+    local openssl_bin=$1
+    local ca_cert=$2
+    local ca_key=$3
+    local verify_output
+    local verify_rc
+    NAME_CONSTRAINTS_TEST_DIR=$(mktemp -d) || { echo -e "${RED}Error: failed to create a temporary directory${RESET}" >&2; return 1; }
+    printf '%s\n' "basicConstraints = critical, CA:FALSE" \
+                  "keyUsage = critical, digitalSignature, keyEncipherment" \
+                  "extendedKeyUsage = serverAuth" \
+                  "subjectAltName = DNS:example.com" > "$NAME_CONSTRAINTS_TEST_DIR/example.ext"
+
+    echo "Issuing a throwaway certificate for example.com (you will be asked for the Root CA private key passphrase) ..."
+    if ! "$openssl_bin" req -new -newkey rsa:2048 -nodes -subj "/CN=example.com" \
+                -keyout "$NAME_CONSTRAINTS_TEST_DIR/example.key" -out "$NAME_CONSTRAINTS_TEST_DIR/example.csr" 2>/dev/null \
+       || ! "$openssl_bin" x509 -req -in "$NAME_CONSTRAINTS_TEST_DIR/example.csr" -CA "$ca_cert" -CAkey "$ca_key" \
+                -set_serial "0x$("$openssl_bin" rand -hex 16)" -days 1 -sha256 \
+                -extfile "$NAME_CONSTRAINTS_TEST_DIR/example.ext" -out "$NAME_CONSTRAINTS_TEST_DIR/example.crt"; then
+        echo -e "${RED}Error: failed to issue the throwaway example.com certificate${RESET}" >&2
+        rm -rf "$NAME_CONSTRAINTS_TEST_DIR"
+        NAME_CONSTRAINTS_TEST_DIR=
+        return 1
+    fi
+
+    echo "Verifying the example.com certificate against $ca_cert (it must be rejected) ..."
+    verify_output=$("$openssl_bin" verify -CAfile "$ca_cert" "$NAME_CONSTRAINTS_TEST_DIR/example.crt" 2>&1)
+    verify_rc=$?
+    rm -rf "$NAME_CONSTRAINTS_TEST_DIR"
+    NAME_CONSTRAINTS_TEST_DIR=
+    echo "$verify_output"
+    echo "Throwaway example.com certificate and key deleted"
+    if [[ $verify_rc -ne 0 ]] && grep -qiE "permitted subtree violation|name constraint" <<< "$verify_output"; then
+        echo -e "${GREEN}PASS: the Root CA rejects example.com with a name constraints violation${RESET}"
+        return 0
+    fi
+    echo -e "${RED}FAIL: example.com was not rejected with a name constraints violation, the Root CA is not restricted${RESET}" >&2
+    return 1
+}
+
+# Function to print how to trust a Root CA on this Mac (login keychain only) and retire the previous, unconstrained one
+# Usage: printKeychainTrustInstructions <openssl binary> <CA certificate> <CA common name>
+printKeychainTrustInstructions()
+{
+    local openssl_bin=$1
+    local cert=$2
+    local cn=$3
+    local new_sha1
+    new_sha1=$("$openssl_bin" x509 -in "$cert" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d :)
+    echo -e "${BLU}***** Trust $cn on this Mac (login keychain: current user only, no sudo) *****${RESET}"
+    echo "  1) Retire the previous, unconstrained $cn, otherwise the name constraints protect nothing."
+    echo "     Old and new have the same name, so list them by SHA-1 fingerprint:"
+    echo "       security find-certificate -a -c \"$cn\" -Z ~/Library/Keychains/login.keychain-db | grep SHA-1"
+    echo "       security find-certificate -a -c \"$cn\" -Z /Library/Keychains/System.keychain | grep SHA-1"
+    echo "     The new certificate is SHA-1 $new_sha1: delete every other one with"
+    echo "       security delete-certificate -Z <old SHA-1> ~/Library/Keychains/login.keychain-db"
+    echo "       sudo security delete-certificate -Z <old SHA-1> /Library/Keychains/System.keychain"
+    echo "  2) Trust the new one in the login keychain, never the System keychain (macOS asks for your password):"
+    echo "       security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db \"$cert\""
+    echo
 }
 
 # Function to securely input credentials

@@ -10,6 +10,8 @@
         - [Run Keycloak on Docker](#run-keycloak-on-docker)
         - [Test Keycloak functioning](#test-keycloak-functioning)
 - [Windfire Root CA and certificates](#windfire-root-ca-and-certificates)
+    - [Root CA name constraints](#root-ca-name-constraints)
+    - [Trusting the Root CAs on macOS](#trusting-the-root-cas-on-macos)
 - [Encrypting secrets with sops](#encrypting-secrets-with-sops)
 - [Authentication Service](#authentication-service)
     - [First-time setup](#first-time-setup)
@@ -177,7 +179,7 @@ Keycloak's certificate is signed by a dedicated certificate authority, **Windfir
 
 The script **[setupTLS.sh](keycloak/security/setupTLS.sh)** uses OpenSSL 3 (`brew install openssl@3`) and offers these functions:
 
-1. **Create Windfire Keycloak Root CA** (run once): creates an RSA 4096, AES-256 passphrase protected key and a self-signed certificate (`CN=Windfire Keycloak Root CA, O=Windfire`, `CA:TRUE, pathlen:0`, valid 10 years). It refuses to overwrite an existing Root CA.
+1. **Create Windfire Keycloak Root CA** (run once): creates an RSA 4096, AES-256 passphrase protected key and a self-signed certificate (`CN=Windfire Keycloak Root CA, O=Windfire`, `CA:TRUE, pathlen:0`, valid 10 years). The certificate carries a critical `nameConstraints` extension, so the CA can only issue certificates for the names in `WINDFIRE_CA_PERMITTED_NAMES` (see [Root CA name constraints](#root-ca-name-constraints)). The script checks the extension after signing and removes the new Root CA if it is missing. It refuses to overwrite an existing Root CA.
    - certificate: `~/opt/keycloak/ssl/truststore/WindfireKeycloakRootCA.crt` (this is the file Keycloak clients must trust)
    - private key: `~/opt/keycloak/ssl/keystore/WindfireKeycloakRootCA.key` (mode 0600)
 2. **Generate Keycloak server certificate**: asks for the environment and issues `windfire-keycloak.key` / `windfire-keycloak.crt` (RSA 3072, valid 397 days) signed by the Root CA, using SANs from **[openssl_config_localhost.ext](keycloak/security/openssl_config_localhost.ext)** or **[openssl_config_raspberry.ext](keycloak/security/openssl_config_raspberry.ext)**, then verifies the chain.
@@ -185,6 +187,7 @@ The script **[setupTLS.sh](keycloak/security/setupTLS.sh)** uses OpenSSL 3 (`bre
    - Production: written to `~/opt/keycloak/ssl/certs/raspberry`; the script prints how to install the files in `/etc/keycloak/tls` on raspberry01 and the two `https-certificate-*` lines for `keycloak.conf`
 3. **Check**: read-only. It prints the Root CA and server certificate details and exits 1 if the server certificate does not chain to the Root CA or expires within 30 days (`RENEW_BEFORE_DAYS`). Renew yearly with function 2.
 4. **Generate all**: 1 + 2.
+5. **Test name constraints**: issues a throwaway certificate for `example.com` from the Root CA, checks that `openssl verify` rejects it with a name constraints violation (`permitted subtree violation`), then deletes it. It needs the Root CA private key (restore it from the Password Manager first) and exits 1 if the certificate is not rejected.
 
 The function and the environment (1=Development, 2=Test, 3=Production) can be passed as arguments, e.g. `./setupTLS.sh 3 3` checks the production certificate. Settings such as `CA_DAYS`, `SERVER_DAYS` and `RENEW_BEFORE_DAYS` can be overridden as environment variables.
 
@@ -193,6 +196,7 @@ cd keycloak/security
 ./setupTLS.sh 1      # once: create Windfire Keycloak Root CA (asks for the Root CA passphrase)
 ./setupTLS.sh 2 3    # issue the raspberry01 certificate (asks for the Root CA passphrase)
 ./setupTLS.sh 3 3    # check the raspberry01 certificate
+./setupTLS.sh 5      # check that the Root CA rejects names outside WINDFIRE_CA_PERMITTED_NAMES
 ```
 
 **IMPORTANT: the Root CA private key must not stay on the filesystem.** After functions 1 and 2 the script prints, in red, the steps and exact commands to follow:
@@ -216,7 +220,7 @@ If *option 1* is selected, the script does the following:
 
 Once everything has been properly setup, to run Keycloak with TLS enabled, we just need to select *option 2* when **[start-keycloak.sh](keycloak/start-keycloak.sh)** script is launched: it starts Keycloak with `--https-certificate-file` and `--https-certificate-key-file` pointing at those PEM files (no keystore password is needed any more).
 
-Keycloak Admin console will respond on https://localhost:8443/admin. Browsers will complain unless `WindfireKeycloakRootCA.crt` is trusted on the machine; clients such as `curl` can use `--cacert ~/opt/keycloak/ssl/truststore/WindfireKeycloakRootCA.crt`.
+Keycloak Admin console will respond on https://localhost:8443/admin. Browsers will complain unless `WindfireKeycloakRootCA.crt` is trusted on the machine (in the login keychain, see [Trusting the Root CAs on macOS](#trusting-the-root-cas-on-macos)); clients such as `curl` can use `--cacert ~/opt/keycloak/ssl/truststore/WindfireKeycloakRootCA.crt`.
 
 #### Run Keycloak on Docker
 In case Docker is selected, Keycloak will run with the following default parameters values:
@@ -240,7 +244,7 @@ The script allows to select whether TLS on Keycloak server is enabled or not
 ## Windfire Root CA and certificates
 The [ssl/](ssl/) folder contains the scripts used to generate the Windfire self-signed Root CA and the per-host server certificates used across the whole Windfire suite, independently of Keycloak's own TLS setup described above.
 
-- **[createRootCA.sh](ssl/createRootCA.sh)** generates the Windfire self-signed Root CA (`WindfireRootCA.key`/`.crt`) — self-signed with `basicConstraints=CA:true` and `keyUsage=keyCertSign,cRLSign` so it's usable as an actual signing authority, not just a leaf cert — and copies it into `~/opt/windfire/ssl/{keystore,truststore}`.
+- **[createRootCA.sh](ssl/createRootCA.sh)** generates the Windfire self-signed Root CA (`WindfireRootCA.key`/`.crt`) — self-signed with `basicConstraints=CA:true` and `keyUsage=keyCertSign,cRLSign` so it's usable as an actual signing authority, not just a leaf cert, and with a critical `nameConstraints` extension that restricts it to the Windfire hosts (see [Root CA name constraints](#root-ca-name-constraints)) — and copies it into `~/opt/windfire/ssl/{keystore,truststore}`. It checks the extension after signing and stops with an error, removing the new certificate and key, if it is missing. `./createRootCA.sh test` checks the existing Root CA: it issues a throwaway certificate for `example.com`, checks that `openssl verify` rejects it with a name constraints violation, then deletes it.
 - **[generateServerCert.sh](ssl/generateServerCert.sh)** issues per-host server certificates off that CA, using **[openssl_config_localhost.ext](ssl/openssl_config_localhost.ext)** or **[openssl_config_raspberry.ext](ssl/openssl_config_raspberry.ext)** as the SAN configuration depending on the target host.
 
 **`createRootCA.sh` must be run once before `generateServerCert.sh`** — the latter signs against the CA copies left in `~/opt/windfire/ssl/{keystore,truststore}` and will fail with a clear error if they're not there yet, rather than silently emitting an empty certificate:
@@ -253,7 +257,39 @@ cd ssl
                           # prod        -> writes to ~/opt/windfire/ssl/certs/raspberry
 ```
 
-Re-run `generateServerCert.sh` any time a server cert expires or a new host is added; the Root CA itself only needs to be created once and reused.
+Re-run `generateServerCert.sh` any time a server cert expires; the Root CA itself only needs to be created once and reused. A new host also needs a new Root CA, see below.
+
+### Root CA name constraints
+Both private CAs, the Windfire Root CA and the Windfire Keycloak Root CA, carry a critical `nameConstraints` extension. They can only issue certificates for the names listed in `WINDFIRE_CA_PERMITTED_NAMES` in **[common.sh](common.sh)**:
+
+```bash
+WINDFIRE_CA_PERMITTED_NAMES="DNS:raspberry01 DNS:raspberry02 DNS:localhost IP:127.0.0.1/255.255.255.255"
+```
+
+So even if a CA private key leaks, it cannot be used to impersonate any other site. Both scripts print the list before creating the CA. A server certificate with a SAN outside the list fails verification (`permitted subtree violation`).
+
+To add a host, add it to `WINDFIRE_CA_PERMITTED_NAMES`, then recreate both Root CAs and reissue every server certificate: the names are fixed in the CA certificate when it is created. Root CAs created before this change have no name constraints: recreate them in the same way, then retire the old ones as described below.
+
+### Trusting the Root CAs on macOS
+Trust a Root CA in your **login keychain**, never in the System keychain. Trust then applies only to your user, and no `sudo` is needed (macOS asks for your password):
+
+```bash
+security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db ~/opt/windfire/ssl/truststore/WindfireRootCA.crt
+security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db ~/opt/keycloak/ssl/truststore/WindfireKeycloakRootCA.crt
+```
+
+This is for browsers and other apps that use the macOS keychain. The scripts of this repository, the Python services, Homebrew `openssl` and Java do not read the keychain: they use the truststore files directly.
+
+The name constraints protect you only once the old, unconstrained Root CA is no longer trusted. The old and new CAs have the same name, so find the old one by SHA-1 fingerprint and delete it (the scripts print the new certificate's SHA-1):
+
+```bash
+security find-certificate -a -c "Windfire Root CA" -Z ~/Library/Keychains/login.keychain-db | grep SHA-1
+security find-certificate -a -c "Windfire Root CA" -Z /Library/Keychains/System.keychain | grep SHA-1
+security delete-certificate -Z <old SHA-1> ~/Library/Keychains/login.keychain-db
+sudo security delete-certificate -Z <old SHA-1> /Library/Keychains/System.keychain
+```
+
+Repeat with `"Windfire Keycloak Root CA"`.
 
 These are the certificates that `SSL_KEYFILE`/`SSL_CERTFILE` in the Authentication Service configuration point at (see below), and that the test scripts verify against.
 

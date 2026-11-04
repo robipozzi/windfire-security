@@ -4,7 +4,7 @@ source ../../common.sh
 # ***** Setup Keycloak TLS with Windfire Keycloak Root CA
 #
 # Usage: ./setupTLS.sh [function] [environment]
-#   function    : 1-4, as in the menu below (asked interactively if omitted)
+#   function    : 1-5, as in the menu below (asked interactively if omitted)
 #   environment : 1=Development, 2=Test, 3=Production (asked interactively if omitted)
 #
 # Every setting in the variable section can be overridden by an environment
@@ -57,6 +57,7 @@ chooseFunction()
         echo -e "${GREEN}2. Generate Keycloak server certificate signed by Windfire Keycloak Root CA${RESET}"
         echo -e "${GREEN}3. Check Windfire Keycloak Root CA and Keycloak server certificate${RESET}"
         echo -e "${GREEN}4. Generate all TLS configuration (1 + 2)${RESET}"
+        echo -e "${GREEN}5. Test Windfire Keycloak Root CA name constraints${RESET}"
         read FUNCTION_CHOICE
     fi
     case $FUNCTION_CHOICE in
@@ -67,6 +68,8 @@ chooseFunction()
         3)  FUNCTION=checkCertificates
             ;;
         4)  FUNCTION=createTLSConfiguration
+            ;;
+        5)  FUNCTION=testRootCANameConstraints
             ;;
         *)  printf "\n${RED}No valid option selected${RESET}\n"
             FUNCTION_CHOICE=
@@ -106,9 +109,12 @@ createRootCA()
     # 2) Self-sign Windfire Keycloak Root CA certificate
     signRootCA
 
+    # 3) Verify Windfire Keycloak Root CA certificate carries the name constraints (cleanup() removes it if not)
+    verifyRootCANameConstraints
+
     ROOT_CA_IN_PROGRESS=false
 
-    # 3) Print Root CA details and remind to protect the private key
+    # 4) Print Root CA details and remind to protect the private key
     printRootCASummary
 }
 
@@ -127,6 +133,8 @@ createRootCAPrivateKey()
 # ===== SELF-SIGN WINDFIRE KEYCLOAK ROOT CA CERTIFICATE FUNCTION =====
 signRootCA()
 {
+    printPermittedNames
+    NAME_CONSTRAINTS=$(buildNameConstraints) || exit 1
     echo -e "Self signing Windfire Keycloak Root CA certificate (you will be asked for the Root CA private key passphrase) ..."
     "$OPENSSL" req -x509 -new -key "$ROOT_CA_KEY_PATH" -sha256 -days "$CA_DAYS" \
             -out "$ROOT_CA_CERTIFICATE_PATH" \
@@ -134,9 +142,19 @@ signRootCA()
             -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
             -addext "keyUsage=critical,keyCertSign,cRLSign" \
             -addext "subjectKeyIdentifier=hash" \
+            -addext "nameConstraints=${NAME_CONSTRAINTS}" \
         || { echo -e "${RED}Error: failed to self-sign Root CA certificate${RESET}" >&2; exit 1; }
     chmod 644 "$ROOT_CA_CERTIFICATE_PATH"
     echo -e "Windfire Keycloak Root CA certificate ${BLU}$ROOT_CA_CERTIFICATE_PATH${RESET} self signed"
+    echo
+}
+
+# ===== VERIFY WINDFIRE KEYCLOAK ROOT CA NAME CONSTRAINTS FUNCTION =====
+verifyRootCANameConstraints()
+{
+    echo -e "Verifying Windfire Keycloak Root CA name constraints ..."
+    verifyNameConstraints "$OPENSSL" "$ROOT_CA_CERTIFICATE_PATH" \
+        || { echo -e "${RED}Error: Windfire Keycloak Root CA is not restricted to the Windfire hosts${RESET}" >&2; exit 1; }
     echo
 }
 
@@ -146,8 +164,9 @@ printRootCASummary()
     echo -e "${BLU}***** Windfire Keycloak Root CA created *****${RESET}"
     echo -e "Certificate : ${BLU}$ROOT_CA_CERTIFICATE_PATH${RESET}"
     echo -e "Private key : ${BLU}$ROOT_CA_KEY_PATH${RESET}"
-    "$OPENSSL" x509 -in "$ROOT_CA_CERTIFICATE_PATH" -noout -subject -enddate -fingerprint -sha256
+    "$OPENSSL" x509 -in "$ROOT_CA_CERTIFICATE_PATH" -noout -subject -enddate -fingerprint -sha256 -ext nameConstraints
     echo
+    printKeychainTrustInstructions "$OPENSSL" "$ROOT_CA_CERTIFICATE_PATH" "$CA_CN"
     printDeleteRootCAKeyReminder
 }
 
@@ -315,6 +334,21 @@ checkCertificates()
     fi
 }
 
+# ===== TEST WINDFIRE KEYCLOAK ROOT CA NAME CONSTRAINTS FUNCTION =====
+testRootCANameConstraints()
+{
+    echo -e "${BLU}***************************************************************${RESET}"
+    echo -e "${BLU}***** Test Windfire Keycloak Root CA name constraints     *****${RESET}"
+    echo -e "${BLU}***************************************************************${RESET}"
+    echo
+
+    checkOpenssl
+    checkRootCA
+    testNameConstraints "$OPENSSL" "$ROOT_CA_CERTIFICATE_PATH" "$ROOT_CA_KEY_PATH" || exit 1
+    echo
+    printDeleteRootCAKeyReminder
+}
+
 # ===== GENERATE ALL TLS CONFIGURATION FUNCTION =====
 createTLSConfiguration()
 {
@@ -429,6 +463,9 @@ cleanup()
 {
     if [ -n "$CSR_FILE" ]; then
         rm -f "$CSR_FILE"
+    fi
+    if [ -n "$NAME_CONSTRAINTS_TEST_DIR" ]; then
+        rm -rf "$NAME_CONSTRAINTS_TEST_DIR"
     fi
     # Remove a partially created Root CA, so that a new run is not refused
     if [ "$ROOT_CA_IN_PROGRESS" = true ]; then
