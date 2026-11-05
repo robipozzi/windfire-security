@@ -398,7 +398,7 @@ The production certificate and key are generated for you if they are missing. Yo
 
 ### What `deploy.sh` does
 1. **Pre-flight checks**: checks for `ansible-playbook`, the SSH key, both Root CAs and a valid `server/config/service_config.json`, and stops with a red error if one is missing. If `windfire-security.crt` / `.key` are missing from `$HOME/opt/windfire/ssl/certs/raspberry`, it runs [generateServerCert.sh](ssl/generateServerCert.sh): choose **3. Production** when asked.
-2. **Configuration**: asks for the Keycloak server URL (the default is `KEYCLOAK_SERVER_URL` in your local `server/.env`).
+2. **Configuration**: asks for the Keycloak server URL (default `https://raspberry01:8443`).
 3. **Playbook**: asks for the `pi` sudo password (`BECOME password`), then runs [windfire-security-deploy.yaml](deployment/raspberry/windfire-security-deploy.yaml), configured via **[conf/config.yaml](deployment/raspberry/conf/config.yaml)**:
    1. stops the `windfire-security` service, and any `authServer.py` process started by hand
    2. removes and recreates `/home/pi/windfire-security`, and copies the `server/` folder (without caches, the local venv, certificates, logs, `.env` and `service_config.json`)

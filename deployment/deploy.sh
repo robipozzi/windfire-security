@@ -184,7 +184,7 @@ inputWithDefault()
 collectConfig()
 {
     printBanner "Collect Keycloak configuration"
-    KEYCLOAK_SERVER_URL=$(inputWithDefault "Keycloak server URL" "$(getEnvFileValue ../server/.env KEYCLOAK_SERVER_URL)")
+    KEYCLOAK_SERVER_URL=$(inputWithDefault "Keycloak server URL" "https://raspberry01:8443")
     export KEYCLOAK_SERVER_URL
     echo
 }
