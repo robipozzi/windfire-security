@@ -5,12 +5,7 @@ source ../common.sh
 # ===== INSTALL PYTHON MODULES PREREQUISITES FUNCTION =====
 installPythonModules()
 {
-    pip3 install --upgrade \
-                colorama==0.4.6 \
-                requests==2.34.2\
-                fastapi==0.141.1 \
-                uvicorn[standard]==0.52.4 \
-                httpx==0.28.1
+    pip3 install -r requirements.txt
 }
 
 # ===== INSTALL CUSTOME Windfire Security PYTHON MODULES PREREQUISITES FUNCTION =====

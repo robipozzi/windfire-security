@@ -1,4 +1,6 @@
 # Windfire Security
+[![CI](https://github.com/robipozzi/windfire-security/actions/workflows/ci.yml/badge.svg)](https://github.com/robipozzi/windfire-security/actions/workflows/ci.yml)
+
 - [Introduction](#introduction)
 - [Security protocols](#security-protocols)
     - [OAuth2](#OAuth2)
@@ -19,6 +21,7 @@
     - [API endpoints](#api-endpoints)
 - [Testing the Authentication Service](#testing-the-authentication-service)
 - [Deployment](#deployment)
+- [Dependency monitoring and CI](#dependency-monitoring-and-ci)
 
 ## Introduction
 This repository provides the authentication/authorization infrastructure for the Windfire application suite. It has three main parts:
@@ -341,7 +344,7 @@ cd server
 ./stop-auth-server.sh               # stops the background server (on the Pi, use systemctl: see Deployment)
 ```
 
-**[createPythonVenv.sh](server/createPythonVenv.sh)** / **[activatePythonVenv.sh](server/activatePythonVenv.sh)** / **[deactivatePythonVenv.sh](server/deactivatePythonVenv.sh)** manage a dedicated Python virtual environment; **[installPrereqs.sh](server/installPrereqs.sh)** pins the FastAPI/uvicorn/PyJWT/cryptography/python-dotenv versions installed into it.
+**[createPythonVenv.sh](server/createPythonVenv.sh)** / **[activatePythonVenv.sh](server/activatePythonVenv.sh)** / **[deactivatePythonVenv.sh](server/deactivatePythonVenv.sh)** manage a dedicated Python virtual environment; **[installPrereqs.sh](server/installPrereqs.sh)** installs into it the FastAPI/uvicorn/PyJWT/cryptography/python-dotenv versions pinned in **[requirements.txt](server/requirements.txt)**.
 
 ### API endpoints
 Routes are nested under a version prefix:
@@ -373,7 +376,7 @@ cd test
 ./run-test-client.sh -e dev         # hits health endpoints, authenticates via Keycloak, calls the protected endpoint
 ```
 
-Both scripts prompt interactively for username/password/service, defaulting the service to `windfire-calendar-srv`. The `-e {dev|staging|prod}` flag selects which Authentication Service instance to target. **[installPrereqs.sh](test/installPrereqs.sh)** additionally installs the sibling `windfire-security-client` repo in editable mode.
+Both scripts prompt interactively for username/password/service, defaulting the service to `windfire-calendar-srv`. The `-e {dev|staging|prod}` flag selects which Authentication Service instance to target. **[installPrereqs.sh](test/installPrereqs.sh)** installs the versions pinned in **[requirements.txt](test/requirements.txt)**, and additionally installs the sibling `windfire-security-client` repo in editable mode.
 
 ## Deployment
 The [deployment/](deployment/) folder contains scripts that run Ansible playbooks against the `security_service` host group of your Ansible inventory (`/etc/ansible/hosts`, i.e. `raspberry01`), using the SSH key `$HOME/.ssh/ansible_rsa`. The Authentication Service runs on the Pi as the `windfire-security` systemd service, on port `8444` (Keycloak already uses `8443` on that host). The scripts work from any folder.
@@ -422,3 +425,20 @@ tail -f ~/windfire-security/server/logs/windfire-security-server.log   # applica
 
 ### What `undeploy.sh` does
 After a confirmation prompt (skipped with `-y`) and the `pi` sudo password, [windfire-security-undeploy.yaml](deployment/raspberry/windfire-security-undeploy.yaml) stops and disables the service, removes the unit file and the encrypted credential, and deletes `/home/pi/windfire-security`. The Root CA truststores are left in place, since other Windfire services use them.
+
+## Dependency monitoring and CI
+The CI badge at the top of this page shows the result of the latest **[CI workflow](.github/workflows/ci.yml)** run on `main`. The workflow runs on every pull request and on every push to `main`:
+
+- **Python**, separately for `server/` and `test/`, on Python 3.11.2 (the version on raspberry01): installs `requirements.txt`, compiles the sources with `python -m compileall`, and checks the dependencies for known vulnerabilities with `pip-audit -r requirements.txt`. The compile step only catches syntax errors, because this repository has no automated test suite.
+- **Dependency review**, on pull requests only: fails if the pull request adds a dependency with a known vulnerability of high or critical severity.
+
+**[Dependabot](.github/dependabot.yml)** checks `server/requirements.txt`, `test/requirements.txt` and the GitHub Actions in the workflows every week. It groups minor and patch updates into one pull request per folder, and keeps at most 5 version update pull requests open per folder.
+
+To read the alerts, open **Security → Dependabot** on GitHub (https://github.com/robipozzi/windfire-security/security/dependabot). This page needs write access to the repository. Each alert shows the package, its severity, the affected versions and the first patched version. To fix one, merge the Dependabot pull request or change the pin in `requirements.txt`. From the terminal:
+
+```bash
+gh api repos/robipozzi/windfire-security/dependabot/alerts \
+  --jq '.[] | select(.state == "open") | [.security_advisory.severity, .dependency.package.name, .dependency.manifest_path, .security_vulnerability.first_patched_version.identifier, .html_url] | @tsv'
+```
+
+Dependabot does not read the versions set in shell scripts or Ansible files, so it does not monitor Keycloak (`KEYCLOAK_VERSION` in [common.sh](common.sh), `keycloak_version` in [raspberry-config.yml](keycloak/deployment/raspberry/conf/raspberry-config.yml)). Check Keycloak releases by hand.
