@@ -28,7 +28,7 @@ First-time setup requires copying two placeholder files (both gitignored, never 
 - `server/.env_PLACEHOLDER` → `server/.env` — sets `APP_NAME`, `API_HOST`, `API_PORT`/`API_PORT_SECURE`, `SSL_KEYFILE`/`SSL_CERTFILE`, `ENFORCE_HTTPS`, `ALLOWED_HOSTS`, `KEYCLOAK_SERVER_URL`.
 - `server/config/service_config.json_PLACEHOLDER` → `server/config/service_config.json` — per-service Keycloak `realm`/`client_id`/`client_secret` map, keyed by service name (e.g. `windfire-calendar-srv`). This is how one auth server backs multiple Windfire client services.
 
-`server/createPythonVenv.sh` / `activatePythonVenv.sh` / `deactivatePythonVenv.sh` manage a venv named `windfire-security-server` (see `PYTHON_SERVER_VIRTUAL_ENV` in `common.sh`); `server/installPrereqs.sh` pins the FastAPI/uvicorn/PyJWT/cryptography versions.
+`server/createPythonVenv.sh` / `activatePythonVenv.sh` / `deactivatePythonVenv.sh` manage a venv named `windfire-security-server` (see `PYTHON_SERVER_VIRTUAL_ENV` in `common.sh`); `server/installPrereqs.sh` installs the FastAPI/uvicorn/PyJWT/cryptography versions pinned in `server/requirements.txt`.
 
 ## Deploying to Raspberry
 
@@ -44,7 +44,7 @@ cd test
 ./run-test-client.sh -e dev         # runs testClient.py: hits health endpoints, authenticates via Keycloak, calls the protected endpoint
 ```
 
-Both prompt interactively for username/password/service (`common.sh`'s `getCredentials`), defaulting service to `windfire-calendar-srv`. `-e {dev|staging|prod}` selects which auth server to target (`prod` points at `raspberry01:8444`, others at `localhost:8443`). Uses a separate `windfire-security-test` venv; `test/installPrereqs.sh` additionally does the editable install of the sibling `windfire-security-client` repo.
+Both prompt interactively for username/password/service (`common.sh`'s `getCredentials`), defaulting service to `windfire-calendar-srv`. `-e {dev|staging|prod}` selects which auth server to target (`prod` points at `raspberry01:8444`, others at `localhost:8443`). Uses a separate `windfire-security-test` venv; `test/installPrereqs.sh` installs `test/requirements.txt` and additionally does the editable install of the sibling `windfire-security-client` repo.
 
 ## Keycloak install, run, upgrade
 
