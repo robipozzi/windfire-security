@@ -1,9 +1,18 @@
 version: 2
+
+# Version updates (routine bumps) go to fix/dependabot-alerts through target-branch.
+# Security updates ignore target-branch: Dependabot always opens them
+# against the default branch (main), grouped by the repository setting
+# "Grouped security updates".
 updates:
   - package-ecosystem: pip
     directory: /server
+    target-branch: fix/dependabot-alerts
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Rome
     open-pull-requests-limit: 5
     groups:
       minor-and-patch:
@@ -13,8 +22,12 @@ updates:
 
   - package-ecosystem: pip
     directory: /test
+    target-branch: fix/dependabot-alerts
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Rome
     open-pull-requests-limit: 5
     groups:
       minor-and-patch:
@@ -24,8 +37,12 @@ updates:
 
   - package-ecosystem: github-actions
     directory: /
+    target-branch: fix/dependabot-alerts
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Rome
     open-pull-requests-limit: 5
     groups:
       minor-and-patch:
