@@ -17,7 +17,7 @@ print(f"Running with")
 print(f"    Environment:        {environment}")
 print(f"    Test server port:   {port}")
 if environment in ("dev", "staging"):
-    httpsAuthServerUrl = "https://localhost:8443"
+    httpsAuthServerUrl = "https://localhost:8444"
 elif environment == "prod":
     httpsAuthServerUrl = "https://raspberry01:8444"
 testServerUrl = f"http://localhost:{port}"
