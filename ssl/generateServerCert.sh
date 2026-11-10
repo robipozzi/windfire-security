@@ -25,7 +25,7 @@ main()
     selectEnvironment
     echo -e "Environment selected is ${BOLD}$ENVIRONMENT${RESET}"
     case "$ENVIRONMENT" in
-        dev|staging)
+        dev|test)
             OPENSSL_CONFIG_FILE="openssl_config_localhost.ext"
             CERTS_DIR="../server/ssl"
             ;;
@@ -39,7 +39,7 @@ main()
             ;;
         *)
             echo -e "${RED}Error: Invalid environment '$ENVIRONMENT'${RESET}"
-            echo "Valid options: dev, staging, prod"
+            echo "Valid options: dev, test, prod"
             exit 1
             ;;
     esac

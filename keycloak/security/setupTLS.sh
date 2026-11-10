@@ -416,7 +416,7 @@ selectCertificateEnvironment()
     fi
     echo -e "Environment selected is ${BOLD}$ENVIRONMENT${RESET}"
     case "$ENVIRONMENT" in
-        dev|staging)
+        dev|test)
             OPENSSL_CONFIG_FILE="openssl_config_localhost.ext"
             CERTS_DIR=$DEFAULT_TLS_DIR
             COMMON_NAME="localhost"
@@ -428,7 +428,7 @@ selectCertificateEnvironment()
             ;;
         *)
             echo -e "${RED}Error: Invalid environment '$ENVIRONMENT'${RESET}"
-            echo "Valid options: dev, staging, prod"
+            echo "Valid options: dev, test, prod"
             exit 1
             ;;
     esac
