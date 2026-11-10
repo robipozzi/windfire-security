@@ -382,6 +382,20 @@ It runs two tiers with pytest and exits 0 only if both pass:
 - **Offline tier** ([tests/unit/](tests/unit/)): Keycloak is mocked, so no network or secrets are needed. It covers JWT verification with locally generated keys (expired token, wrong audience or issuer, wrong key, `alg=none`, HS256 confusion, missing claims), the JWKS cache, the API routes and their error codes, the HTTPS/security-header/trusted-host middleware, the settings and service registry, and `bash -n` on every script (plus `shellcheck` when installed). It also runs in CI on every pull request.
 - **Live tier** ([tests/live/](tests/live/)): read-only end-to-end tests against the chosen environment. It checks Keycloak first (OIDC discovery, issuer, signing keys, certificate expiry), then the server's TLS certificate, health, `/auth`, `/verify`, the [windfire-security-client](../windfire-security-client) library, and the full flow through [test/testServer.py](test/testServer.py). Wrong-password tests use a username that doesn't exist, so Keycloak's brute-force protection never locks a real user.
 
+At the end, the summary lists every test of each tier that ran, as `Group / test  PASS|FAIL|SKIP (reason)`, followed by its totals, then the result of each tier. It is built from the tier's JUnit report by [tests/suite_report.py](tests/suite_report.py). A parametrized test whose cases all end the same way takes one row (`Shell scripts / bash syntax  PASS  (29 cases)`); otherwise each case gets its own row.
+
+```
+===> Live tier (dev) <===
+  Keycloak / discovery document                     PASS
+  Auth endpoint / valid credentials return a token  SKIP  (no credentials: ...)
+  ...
+  Total: 27  Passed: 20  Failed: 0  Skipped: 7
+
+  Live tier (dev): PASS
+```
+
+A live tier whose environment isn't configured is reported as `SKIPPED`, not `PASS`.
+
 Options:
 
 | Option | Meaning |

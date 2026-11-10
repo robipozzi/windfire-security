@@ -31,6 +31,8 @@ TARGET_ROOT_CA=""
 STARTED_PID=""
 SERVER_LOG=""
 UNIT_RESULT="NOT RUN"
+UNIT_REPORT=""
+LIVE_REPORT=""
 LIVE_RESULT="NOT RUN"
 LIVE_NOTE=""
 EXIT_CODE=0
@@ -93,6 +95,7 @@ run_unit_tier()
     echo -e "${BOLD}${CYAN}===== Offline tier (Keycloak mocked, no network) =====${RESET}"
     run_pytest unit "$TESTS_DIR/unit" unit
     UNIT_RESULT=$TIER_RESULT
+    UNIT_REPORT=$TIER_REPORT
     echo
 }
 
@@ -105,8 +108,10 @@ run_live_tier()
     if [ -z "$TARGET_HOST" ] || [ -z "$TARGET_PORT" ]; then
         # pytest skips every live test with the "not configured" message
         echo -e "${YELLOW}Environment '$ENVIRONMENT' is not configured in tests/environments.json${RESET}"
-        run_pytest live "$TESTS_DIR/live" live
+        run_pytest live "$TESTS_DIR/live" live --env "$ENVIRONMENT"
         LIVE_RESULT=$TIER_RESULT
+        [ "$LIVE_RESULT" = PASS ] && LIVE_RESULT=SKIPPED  # nothing was really tested
+        LIVE_REPORT=$TIER_REPORT
         LIVE_NOTE="environment not configured, tests skipped"
         return
     fi
@@ -136,6 +141,7 @@ run_live_tier()
 
     run_pytest live "$TESTS_DIR/live" live --env "$ENVIRONMENT"
     LIVE_RESULT=$TIER_RESULT
+    LIVE_REPORT=$TIER_REPORT
 }
 
 # Host, port and Root CA of the environment, with the same overrides the tests apply
@@ -258,13 +264,13 @@ cleanup()
 }
 
 # ===== PYTEST =====
-# run_pytest <tier> <path> <marker> [extra args]; sets TIER_RESULT and EXIT_CODE
+# run_pytest <tier> <path> <marker> [extra args]; sets TIER_RESULT, TIER_REPORT and EXIT_CODE
 run_pytest()
 {
     local tier=$1 path=$2 marker=$3
     shift 3
-    local args=(-c "$TESTS_DIR/pytest.ini" "$path" -m "$marker"
-                --junitxml "$REPORTS_DIR/${ENVIRONMENT:-offline}-$tier-$TIMESTAMP.xml" "$@")
+    TIER_REPORT=$REPORTS_DIR/${ENVIRONMENT:-offline}-$tier-$TIMESTAMP.xml
+    local args=(-c "$TESTS_DIR/pytest.ini" "$path" -m "$marker" --junitxml "$TIER_REPORT" "$@")
     [ -n "$PYTEST_EXPR" ] && args+=(-k "$PYTEST_EXPR")
     if [ "$VERBOSE" = true ]; then
         args+=(-v)
@@ -290,10 +296,21 @@ print_result()
     echo -e "  $name ${color}${BOLD}$result${RESET}${note:+ ($note)}"
 }
 
+# Every test of a tier that ran, with PASS / FAIL / SKIP and the reason (from its JUnit report)
+print_tier_tests()
+{
+    local label=$1 report=$2
+    [ -n "$report" ] || return
+    "$SUITE_PYTHON" "$TESTS_DIR/suite_report.py" "$label" "$report"
+    echo
+}
+
 print_summary()
 {
     echo
     echo -e "${BOLD}===== Summary =====${RESET}"
+    print_tier_tests "Offline tier" "$UNIT_REPORT"
+    print_tier_tests "Live tier ($ENVIRONMENT)" "$LIVE_REPORT"
     [ "$SCOPE" != "live" ] && print_result "Offline tier:" "$UNIT_RESULT"
     [ "$SCOPE" != "unit" ] && print_result "Live tier ($ENVIRONMENT):" "$LIVE_RESULT" "$LIVE_NOTE"
     echo -e "  JUnit reports in ${REPORTS_DIR}"
