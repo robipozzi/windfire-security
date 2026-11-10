@@ -255,8 +255,8 @@ The [ssl/](ssl/) folder contains the scripts used to generate the Windfire self-
 ```bash
 cd ssl
 ./createRootCA.sh        # one-time (or whenever the Root CA needs rotating); prompts for the CA private key passphrase
-./generateServerCert.sh  # prompts for environment (dev/staging/prod) and server Common Name (CN)
-                          # dev/staging -> writes server/ssl/windfire-security.key + .crt
+./generateServerCert.sh  # prompts for environment (dev/test/prod) and server Common Name (CN)
+                          # dev/test -> writes server/ssl/windfire-security.key + .crt
                           # prod        -> writes to ~/opt/windfire/ssl/certs/raspberry
 ```
 
@@ -337,10 +337,10 @@ cp config/service_config.json_PLACEHOLDER config/service_config.json
 ### Running the Authentication Service
 ```bash
 cd server
-./start-auth-server.sh              # creates/activates venv, installs deps, runs on port 8000 (HTTP) or 8443 (HTTPS)
-./start-auth-server.sh -p 9000      # custom port
+./start-auth-server.sh              # creates/activates venv, installs deps, runs on API_PORT (HTTP) or API_PORT_SECURE (HTTPS) from .env
+./start-auth-server.sh -p 9000      # custom port, overrides the .env port
 ./start-auth-server.sh -v           # verbose/DEBUG logging
-./run-auth-server-background.sh     # same, but backgrounded, logs to logs/windfire-security-server.log
+./start-auth-server-background.sh   # same, but backgrounded; console output to logs/windfire-security.log, app log stays in logs/windfire-security-server.log
 ./stop-auth-server.sh               # stops the background server (on the Pi, use systemctl: see Deployment)
 ```
 
@@ -368,7 +368,55 @@ Keycloak's public keys are cached in memory for 10 minutes. A token signed with 
 When verification fails, the response is always `401` with `{"detail": "Invalid or expired token"}`, including when the requested service is not configured. The actual reason (expired, wrong audience, wrong issuer, unknown service, and so on) is written only to the server log, in `logs/windfire-security-server.log`.
 
 ## Testing the Authentication Service
-There's no automated test suite — the [test/](test/) folder contains manual/interactive scripts that exercise a running Authentication Service end-to-end:
+One command checks that Windfire Security still works after a code change or a merged pull request (Dependabot or other):
+
+```bash
+./run-test-suite.sh                  # asks for the environment (dev, test or prod), then runs everything
+./run-test-suite.sh -s unit          # offline tier only: no network, no credentials
+./run-test-suite.sh -e dev           # starts the local server if needed, runs both tiers
+./run-test-suite.sh -e prod -y       # read-only tests against raspberry01, no confirmation prompt
+./run-test-suite.sh -e dev -k verify # only the tests whose name contains "verify"
+```
+
+It runs two tiers with pytest and exits 0 only if both pass:
+- **Offline tier** ([tests/unit/](tests/unit/)): Keycloak is mocked, so no network or secrets are needed. It covers JWT verification with locally generated keys (expired token, wrong audience or issuer, wrong key, `alg=none`, HS256 confusion, missing claims), the JWKS cache, the API routes and their error codes, the HTTPS/security-header/trusted-host middleware, the settings and service registry, and `bash -n` on every script (plus `shellcheck` when installed). It also runs in CI on every pull request.
+- **Live tier** ([tests/live/](tests/live/)): read-only end-to-end tests against the chosen environment. It checks Keycloak first (OIDC discovery, issuer, signing keys, certificate expiry), then the server's TLS certificate, health, `/auth`, `/verify`, the [windfire-security-client](../windfire-security-client) library, and the full flow through [test/testServer.py](test/testServer.py). Wrong-password tests use a username that doesn't exist, so Keycloak's brute-force protection never locks a real user.
+
+At the end, the summary lists every test of each tier that ran, as `Group / test  PASS|FAIL|SKIP (reason)`, followed by its totals, then the result of each tier. It is built from the tier's JUnit report by [tests/suite_report.py](tests/suite_report.py). A parametrized test whose cases all end the same way takes one row (`Shell scripts / bash syntax  PASS  (29 cases)`); otherwise each case gets its own row.
+
+```
+===> Live tier (dev) <===
+  Keycloak / discovery document                     PASS
+  Auth endpoint / valid credentials return a token  SKIP  (no credentials: ...)
+  ...
+  Total: 27  Passed: 20  Failed: 0  Skipped: 7
+
+  Live tier (dev): PASS
+```
+
+A live tier whose environment isn't configured is reported as `SKIPPED`, not `PASS`.
+
+Options:
+
+| Option | Meaning |
+|---|---|
+| `-e dev\|test\|prod` | environment of the live tier; asked for when missing |
+| `-s unit\|live\|all` | tiers to run, default `all` |
+| `-k <expr>` | pytest `-k` expression |
+| `-n` | never start the local server; fail if none is running |
+| `-K` | keep the server started by the suite running afterwards |
+| `-y` | no confirmation prompt for prod |
+| `-v` | verbose pytest output |
+
+Things to know:
+- **Targets** are in [tests/environments.json](tests/environments.json). `test` has no host yet, so its live tests are skipped with "not configured". `WINDFIRE_SECURITY_HOST` / `WINDFIRE_SECURITY_PORT` override the host and port. For dev, the Keycloak URL is `KEYCLOAK_SERVER_URL` from `server/.env`, the Keycloak that the local server really uses.
+- **Credentials** come from `WINDFIRE_TEST_USERNAME`, `WINDFIRE_TEST_PASSWORD` and optionally `WINDFIRE_TEST_SERVICE` (default `windfire-calendar-srv`). If they're missing, the suite asks for them once. Without a terminal, the tests that need a login are skipped.
+- **dev**: if a server already answers on `localhost`, the suite uses it and leaves it running. Otherwise it starts one in the background, logs to `tests/reports/server-dev-<timestamp>.log`, and stops it at the end, also on Ctrl-C. It never starts Keycloak.
+- **prod**: nothing is started; the suite checks that the server answers and asks for confirmation.
+- The suite has its own venv, `tests/windfire-security-suite`. It is reinstalled whenever `tests/`, `server/` or `test/requirements.txt` changes, so a Dependabot bump is really what gets tested. It also installs the sibling `windfire-security-client` repo when present; without it, the client and flow tests are skipped.
+- JUnit reports go to `tests/reports/`.
+
+The [test/](test/) folder still has the manual scripts, for when you want to watch the flow yourself:
 
 ```bash
 cd test
@@ -376,7 +424,7 @@ cd test
 ./run-test-client.sh -e dev         # hits health endpoints, authenticates via Keycloak, calls the protected endpoint
 ```
 
-Both scripts prompt interactively for username/password/service, defaulting the service to `windfire-calendar-srv`. The `-e {dev|staging|prod}` flag selects which Authentication Service instance to target. **[installPrereqs.sh](test/installPrereqs.sh)** installs the versions pinned in **[requirements.txt](test/requirements.txt)**, and additionally installs the sibling `windfire-security-client` repo in editable mode.
+Both scripts ask for username/password/service, defaulting the service to `windfire-calendar-srv`. `-e {dev|test|prod}` selects the Authentication Service, using the targets in `tests/environments.json`. **[installPrereqs.sh](test/installPrereqs.sh)** installs the versions pinned in **[requirements.txt](test/requirements.txt)**, and additionally installs the sibling `windfire-security-client` repo in editable mode.
 
 ## Deployment
 The [deployment/](deployment/) folder contains scripts that run Ansible playbooks against the `security_service` host group of your Ansible inventory (`/etc/ansible/hosts`, i.e. `raspberry01`), using the SSH key `$HOME/.ssh/ansible_rsa`. The Authentication Service runs on the Pi as the `windfire-security` systemd service, on port `8444` (Keycloak already uses `8443` on that host). The scripts work from any folder.
@@ -429,10 +477,11 @@ After a confirmation prompt (skipped with `-y`) and the `pi` sudo password, [win
 ## Dependency monitoring and CI
 The CI badge at the top of this page shows the result of the latest **[CI workflow](.github/workflows/ci.yml)** run on `main`. The workflow runs on every pull request and on every push to `main`:
 
-- **Python**, separately for `server/` and `test/`, on Python 3.11.2 (the version on raspberry01): installs `requirements.txt`, compiles the sources with `python -m compileall`, and checks the dependencies for known vulnerabilities with `pip-audit -r requirements.txt`. The compile step only catches syntax errors, because this repository has no automated test suite.
+- **Python**, separately for `server/`, `test/` and `tests/`, on Python 3.11.2 (the version on raspberry01): installs `requirements.txt`, compiles the sources with `python -m compileall`, and checks the dependencies for known vulnerabilities with `pip-audit -r requirements.txt`.
+- **Unit tests**: the offline tier of the [test suite](#testing-the-authentication-service) (`pytest tests/unit`), on Python 3.11.2. The live tier needs a running environment, so it doesn't run in CI, and neither do the client and flow tests (the sibling client repo isn't checked out there).
 - **Dependency review**, on pull requests only: fails if the pull request adds a dependency with a known vulnerability of high or critical severity.
 
-**[Dependabot](.github/dependabot.yml)** checks `server/requirements.txt`, `test/requirements.txt` and the GitHub Actions in the workflows every week. It groups minor and patch updates into one pull request per folder, and keeps at most 5 version update pull requests open per folder.
+**[Dependabot](.github/dependabot.yml)** checks `server/requirements.txt`, `test/requirements.txt`, `tests/requirements.txt` and the GitHub Actions in the workflows every week. It groups minor and patch updates into one pull request per folder, and keeps at most 5 version update pull requests open per folder.
 
 To read the alerts, open **Security → Dependabot** on GitHub (https://github.com/robipozzi/windfire-security/security/dependabot). This page needs write access to the repository. Each alert shows the package, its severity, the affected versions and the first patched version. To fix one, merge the Dependabot pull request or change the pin in `requirements.txt`. From the terminal:
 

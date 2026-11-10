@@ -29,6 +29,7 @@ ANSIBLE_SSH_KEY=$HOME/.ssh/ansible_rsa
 # ===== PYTHON VIRTUAL ENVIRONMENTS VARIABLES =====
 PYTHON_SERVER_VIRTUAL_ENV=windfire-security-server
 PYTHON_TEST_VIRTUAL_ENV=windfire-security-test
+PYTHON_SUITE_VIRTUAL_ENV=windfire-security-suite
 DEFAULT_USERNAME=windfire
 DEFAULT_AUTH_SERVICE_TEST=windfire-calendar-srv
 VERIFY_SSL_CERTS=true
@@ -102,7 +103,7 @@ setEnvironment()
 	case $ENVIRONMENT_SELECTION in
 		1)  ENVIRONMENT=dev
 			;;
-		2)  ENVIRONMENT=staging
+		2)  ENVIRONMENT=test
 			;;
         3)  ENVIRONMENT=prod
             ;;
@@ -110,6 +111,26 @@ setEnvironment()
 			selectEnvironment
 			;;
 	esac
+}
+
+# Function to export WINDFIRE_SECURITY_HOST / WINDFIRE_SECURITY_PORT (read by windfire-security-client) for an
+# environment, from tests/environments.json. Values already exported win.
+setWindfireSecurityTarget()
+{
+    local environment=$1
+    local target host port
+    target=$(python3 -c '
+import json, sys
+cfg = json.load(open(sys.argv[1])).get(sys.argv[2]) or {}
+print(cfg.get("host") or "-", cfg.get("port") or "-")' "$WINDFIRE_SECURITY_HOME/tests/environments.json" "$environment") || return 1
+    read -r host port <<< "$target"
+    WINDFIRE_SECURITY_HOST=${WINDFIRE_SECURITY_HOST:-${host#-}}
+    WINDFIRE_SECURITY_PORT=${WINDFIRE_SECURITY_PORT:-${port#-}}
+    if [ -z "$WINDFIRE_SECURITY_HOST" ] || [ -z "$WINDFIRE_SECURITY_PORT" ]; then
+        echo -e "${RED}Environment '$environment' is not configured in tests/environments.json${RESET}"
+        return 1
+    fi
+    export WINDFIRE_SECURITY_HOST WINDFIRE_SECURITY_PORT
 }
 
 # Function to read a single KEY=value from an env file (.env can't be sourced: values with spaces, inline comments)

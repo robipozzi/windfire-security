@@ -20,7 +20,7 @@
         enabled: no
       ignore_errors: yes
 
-    # Fallback for processes started by hand with run-auth-server-background.sh
+    # Fallback for processes started by hand with start-auth-server-background.sh
     - name: Get PID for running process "{{ process }}"
       shell: "pgrep -f {{ process }}"
       register: app_pid

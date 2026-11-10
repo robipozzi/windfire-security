@@ -31,6 +31,7 @@ main()
 # ===== TEST CLIENT RUN FUNCTION =====
 run()
 {
+    setWindfireSecurityTarget "$ENVIRONMENT" || exit 1
     getCredentials
 
     echo -e "${YELLOW}Running test authenticating to Windfire Security server in environment: $ENVIRONMENT${RESET}"
@@ -50,6 +51,8 @@ run()
     echo -e "${YELLOW}Running test client with: ENVIRONMENT=$ENVIRONMENT PORT=$PORT USERNAME=$USERNAME PASSWORD={***} SERVICE=$AUTH_SERVICE_TEST VERIFY_SSL_CERTS=$VERIFY_SSL_CERTS python3 testClient.py${RESET}"
     
     ENVIRONMENT=$ENVIRONMENT \
+    WINDFIRE_SECURITY_HOST=$WINDFIRE_SECURITY_HOST \
+    WINDFIRE_SECURITY_PORT=$WINDFIRE_SECURITY_PORT \
     PORT=$PORT \
     USERNAME=$USERNAME \
     PASSWORD=$PASSWORD \
@@ -93,12 +96,12 @@ validate_environment() {
     fi
 
     case "$ENVIRONMENT" in
-        dev|staging|prod)
+        dev|test|prod)
             return 0
             ;;
         *)
             echo -e "${RED}Error: Invalid environment '$ENVIRONMENT'${RESET}"
-            echo "Valid options: dev, staging, prod"
+            echo "Valid options: dev, test, prod"
             exit 1
             ;;
     esac
@@ -136,7 +139,7 @@ print_help() {
     echo
     echo -e "${BOLD}OPTIONS:${RESET}"
     echo -e "    -e, --environment ENV      Set environment for Windfire Security server to authenticate and validate"
-    echo -e "                               Available environment: dev, staging, prod"
+    echo -e "                               Available environment: dev, test, prod"
     echo -e "                               Default: prod"
     echo
     echo -e "    -p, --port PORT            Specify Test server port (1-65535)"
