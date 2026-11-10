@@ -113,6 +113,26 @@ setEnvironment()
 	esac
 }
 
+# Function to export WINDFIRE_SECURITY_HOST / WINDFIRE_SECURITY_PORT (read by windfire-security-client) for an
+# environment, from tests/environments.json. Values already exported win.
+setWindfireSecurityTarget()
+{
+    local environment=$1
+    local target host port
+    target=$(python3 -c '
+import json, sys
+cfg = json.load(open(sys.argv[1])).get(sys.argv[2]) or {}
+print(cfg.get("host") or "-", cfg.get("port") or "-")' "$WINDFIRE_SECURITY_HOME/tests/environments.json" "$environment") || return 1
+    read -r host port <<< "$target"
+    WINDFIRE_SECURITY_HOST=${WINDFIRE_SECURITY_HOST:-${host#-}}
+    WINDFIRE_SECURITY_PORT=${WINDFIRE_SECURITY_PORT:-${port#-}}
+    if [ -z "$WINDFIRE_SECURITY_HOST" ] || [ -z "$WINDFIRE_SECURITY_PORT" ]; then
+        echo -e "${RED}Environment '$environment' is not configured in tests/environments.json${RESET}"
+        return 1
+    fi
+    export WINDFIRE_SECURITY_HOST WINDFIRE_SECURITY_PORT
+}
+
 # Function to read a single KEY=value from an env file (.env can't be sourced: values with spaces, inline comments)
 getEnvFileValue()
 {

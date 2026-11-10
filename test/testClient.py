@@ -1,5 +1,8 @@
+import json
 import requests # pyright: ignore[reportMissingModuleSource]
 import os
+import sys
+from pathlib import Path
 from colorama import Fore, Style, init # pyright: ignore[reportMissingModuleSource]
 # Import the AuthClient instance from the client package
 from client.authClient import authClient
@@ -16,10 +19,21 @@ port = int(os.getenv("PORT"))
 print(f"Running with")
 print(f"    Environment:        {environment}")
 print(f"    Test server port:   {port}")
-if environment in ("dev", "staging"):
-    httpsAuthServerUrl = "https://localhost:8444"
-elif environment == "prod":
-    httpsAuthServerUrl = "https://raspberry01:8444"
+
+def auth_server_url(environment):
+    """Auth server of the environment: WINDFIRE_SECURITY_HOST/PORT, else tests/environments.json"""
+    host = os.getenv("WINDFIRE_SECURITY_HOST", "").strip()
+    port = os.getenv("WINDFIRE_SECURITY_PORT", "").strip()
+    if not host or not port:
+        with open(Path(__file__).resolve().parent.parent / "tests" / "environments.json") as f:
+            cfg = json.load(f).get(environment) or {}
+        host = host or cfg.get("host")
+        port = port or cfg.get("port")
+    if not host or not port:
+        sys.exit(f"Environment '{environment}' is not configured in tests/environments.json")
+    return f"https://{host}:{port}"
+
+httpsAuthServerUrl = auth_server_url(environment)
 testServerUrl = f"http://localhost:{port}"
 
 def test_health_endpoint_testserver():
