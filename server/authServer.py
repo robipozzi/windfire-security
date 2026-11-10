@@ -124,7 +124,10 @@ async def global_exception_handler(request: Request, exc: Exception):
 #################################
 ##### Main program function #####
 #################################
-def main():
+def main(port_override=None):
+    """
+    Start the server. port_override (from --port) replaces the .env port: API_PORT for HTTP, API_PORT_SECURE for HTTPS
+    """
     global ENFORCE_HTTPS
 
     logger.info(f"Configuration loaded successfully.")
@@ -158,7 +161,9 @@ def main():
             exit(1)
         
         port=settings.get('API_PORT_SECURE')
-        logger.info(f"🔒 Starting server with HTTPS on {host}:{port}")
+        if port_override is not None:
+            port = port_override
+        logger.info(f"🔒 Starting server with HTTPS on {host}:{port} (port from {'--port' if port_override is not None else '.env API_PORT_SECURE'})")
         logger.info(f"   SSL Key: {ssl_keyfile}")
         logger.info(f"   SSL Cert: {ssl_certfile}")
         # Start Uvicorn with SSL
@@ -169,11 +174,20 @@ def main():
             logger.warning("   Set SSL_KEYFILE and SSL_CERTFILE environment variables")
             logger.warning("   or disable ENFORCE_HTTPS for development")
         
-        logger.info(f"🌐 Starting server with HTTP on {host}:{port}")
+        if port_override is not None:
+            port = port_override
+        logger.info(f"🌐 Starting server with HTTP on {host}:{port} (port from {'--port' if port_override is not None else '.env API_PORT'})")
         logger.warning("⚠️  Running without TLS/SSL - not recommended for production")
         # Start Uvicorn without SSL 
         uvicorn.run(app, host=host, port=port)
 
 ################### MAIN PROGRAM EXECUTION ###################
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description="Windfire Security Authentication Service")
+    parser.add_argument("--port", type=int, default=None,
+                        help="Listening port, overrides API_PORT (HTTP) / API_PORT_SECURE (HTTPS) from .env")
+    args = parser.parse_args()
+    if args.port is not None and not 1 <= args.port <= 65535:
+        parser.error(f"--port must be between 1 and 65535, got {args.port}")
+    main(port_override=args.port)

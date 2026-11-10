@@ -1,0 +1,4 @@
+# Windfire Security test suite: server and test-tool dependencies, plus pytest
+-r ../server/requirements.txt
+-r ../test/requirements.txt
+pytest==9.1.1

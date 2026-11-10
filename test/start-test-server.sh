@@ -31,6 +31,7 @@ main()
 # ===== TEST SERVER START FUNCTION =====
 start()
 {
+    setWindfireSecurityTarget "$ENVIRONMENT" || exit 1
     getCredentials
 
     echo -e "${YELLOW}Running Test server${RESET}"
@@ -93,12 +94,12 @@ validate_environment() {
     fi
 
     case "$ENVIRONMENT" in
-        dev|staging|prod)
+        dev|test|prod)
             return 0
             ;;
         *)
             echo -e "${RED}Error: Invalid environment '$ENVIRONMENT'${RESET}"
-            echo "Valid options: dev, staging, prod"
+            echo "Valid options: dev, test, prod"
             exit 1
             ;;
     esac
@@ -135,7 +136,7 @@ print_help() {
     echo
     echo -e "${BOLD}OPTIONS:${RESET}"
     echo -e "    -e, --environment ENV      Set environment for Windfire Security server to authenticate and validate"
-    echo -e "                               Available environment: dev, staging, prod"
+    echo -e "                               Available environment: dev, test, prod"
     echo -e "                               Default: prod"
     echo
     echo -e "    -p, --port PORT            Specify server port (1-65535)"

@@ -43,7 +43,7 @@ class Settings():
                 return None
             return raw.strip().lower() in ('true', '1', 'yes', 'on')
         
-        if key in 'API_PORT' or key in 'API_PORT_SECURE':
+        if key in ('API_PORT', 'API_PORT_SECURE'):
             raw = os.getenv(key)
             if raw is None or raw.strip() == '':
                 return None

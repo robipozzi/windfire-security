@@ -19,6 +19,7 @@ server/ssl/*.key
 server/ssl/*.pem
 server/windfire-security-server.log*
 server/logs/windfire-security-server.log*
+server/logs/windfire-security.log*
 server/config/service_config.json
 test/windfire-security-test/
 test/*/__pycache__/
@@ -26,4 +27,7 @@ test/__pycache__/
 ssl/*.crt
 ssl/*.key
 ssl/*.srl
-ssl/*.csr
+ssl/*.csrtests/windfire-security-suite/
+tests/reports/
+tests/**/__pycache__/
+tests/.pytest_cache/
