@@ -36,15 +36,13 @@ First-time setup requires copying two placeholder files (both gitignored, never 
 
 ## Running tests
 
-There's no automated test suite (no pytest) — `test/` contains manual/interactive integration scripts that exercise a running auth server end-to-end:
+`./run-test-suite.sh [-e dev|test|prod] [-s unit|live|all] [-k expr] [-n] [-K] [-y] [-v]` is the one-shot pytest suite in `tests/`. It exits 0 only if every tier passed. With no `-e`, it asks for the environment through `common.sh`'s `selectEnvironment`.
+- **Offline tier** (`tests/unit`, marker `unit`, also the CI `unit-tests` job): Keycloak is mocked, with no network or secrets. `tests/unit/hermetic.py` sets every env key the server reads and turns `dotenv.load_dotenv` into a no-op *before* `server/` goes on `sys.path`, so the real `server/.env` never leaks in. Server modules are imported by their bare names (`import authServer`, `from keycloakAuth import ...`).
+- **Live tier** (`tests/live`, marker `live`, `--env`): read-only. Targets are in `tests/environments.json` (`test` has `host: null`, so it is skipped). Overrides: `WINDFIRE_SECURITY_HOST/PORT`, and `WINDFIRE_TEST_KEYCLOAK_URL`. dev's `keycloak_url` is null, which means `KEYCLOAK_SERVER_URL` from `server/.env`. Credentials come from `WINDFIRE_TEST_USERNAME/PASSWORD/SERVICE`, and one login is reused per session. Wrong-password tests use a username that doesn't exist (brute-force protection). `test_keycloak.py` is sorted first. The `client` and `flow` tests need the sibling client repo; `flow` spawns `test/testServer.py` on a free port.
+- **Runner**: its venv is `tests/windfire-security-suite` (`PYTHON_SUITE_VIRTUAL_ENV`), reinstalled when the hash of `tests/`, `server/` or `test/requirements.txt` changes. For dev it reuses a server already answering on `localhost`. Otherwise it starts `authServer.py --port <port>` with the suite venv and stops only that PID on exit or Ctrl-C (`-n` never starts, `-K` keeps it running). It never uses `stop-auth-server.sh`, which would also kill a hand-started server. It doesn't prompt for credentials without a terminal.
+- Shared constants and helpers are in `tests/suite_helpers.py` (`pytest.ini` sets `pythonpath = .`). Import from there, never `from conftest import`: there are two conftests.
 
-```bash
-cd test
-./start-test-server.sh -e dev       # runs testServer.py, a dummy service with one endpoint protected by the auth server
-./run-test-client.sh -e dev         # runs testClient.py: hits health endpoints, authenticates via Keycloak, calls the protected endpoint
-```
-
-Both prompt interactively for username/password/service (`common.sh`'s `getCredentials`), defaulting service to `windfire-calendar-srv`. `-e {dev|staging|prod}` selects which auth server to target (`prod` points at `raspberry01:8444`, others at `localhost:8443`). Uses a separate `windfire-security-test` venv; `test/installPrereqs.sh` installs `test/requirements.txt` and additionally does the editable install of the sibling `windfire-security-client` repo.
+The manual scripts in `test/` are still there: `./start-test-server.sh -e dev` runs `testServer.py`, a dummy service with one endpoint protected by the auth server, and `./run-test-client.sh -e dev` runs `testClient.py`, which hits the health endpoints, authenticates and calls the protected endpoint. Both prompt for username/password/service (`getCredentials`). `-e {dev|test|prod}` targets the auth server from `tests/environments.json` through `common.sh`'s `setWindfireSecurityTarget`, which exports the `WINDFIRE_SECURITY_HOST/PORT` the client library honors. They use a separate `windfire-security-test` venv; `test/installPrereqs.sh` installs `test/requirements.txt` plus the editable sibling `windfire-security-client`.
 
 ## Keycloak install, run, upgrade
 
@@ -121,4 +119,4 @@ Config loading: `config/settings.py` (`Settings`/`settings` singleton) reads `.e
 
 Logging: every module gets its logger via `logger.loggerFactory.logger_factory.get_logger(<module_name>)` (never `logging.getLogger` directly) — this ensures consistent formatting (`ColorFormatter`) and routes to both a `TimedRotatingFileHandler` (`server/logs/windfire-security-server.log`, midnight rotation, 7 backups) and stdout. Level is controlled by the `LOG_LEVEL` env var (defaults to `DEBUG`).
 
-Errors surface as `KeycloakAuthError` from `keycloakAuth.py`; routers translate them to HTTP 401 (bad credentials/invalid token) or 500 (unexpected).
+Errors surface as `KeycloakAuthError` from `keycloakAuth.py`; routers translate them to HTTP 401 (bad credentials/invalid token, and an unknown service on `/auth` too, without listing the configured services) or 500 (unexpected).
