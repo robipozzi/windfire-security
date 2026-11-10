@@ -23,6 +23,7 @@ jobs:
         directory:
           - server
           - test
+          - tests
     defaults:
       run:
         working-directory: ${{ matrix.directory }}
@@ -42,6 +43,23 @@ jobs:
         run: pip install pip-audit==2.10.1
       - name: Audit dependencies
         run: pip-audit -r requirements.txt
+
+  unit-tests:
+    name: Unit tests (offline tier)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Same version as raspberry01
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11.2"
+      - name: Install dependencies
+        run: pip install -r tests/requirements.txt
+      # Keycloak mocked, no network, no secrets. The live tier needs a running environment: ./run-test-suite.sh
+      - name: Run offline tests
+        run: python -m pytest tests/unit -m unit --junitxml=tests/reports/unit.xml
 
   dependency-review:
     name: Dependency review
