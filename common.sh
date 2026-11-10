@@ -103,7 +103,7 @@ setEnvironment()
 	case $ENVIRONMENT_SELECTION in
 		1)  ENVIRONMENT=dev
 			;;
-		2)  ENVIRONMENT=staging
+		2)  ENVIRONMENT=test
 			;;
         3)  ENVIRONMENT=prod
             ;;
