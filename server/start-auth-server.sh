@@ -34,9 +34,10 @@ run_server() {
     # Build Python command with optional flags
     local python_cmd="python3 authServer.py"
 
-    if [ -z "${PORT}" ]; then
-        echo -e "${YELLOW}PORT is not set or is empty, running with default.${RESET}"
-        python_cmd="python3 authServer.py"
+    if [ -n "${PORT}" ]; then
+        python_cmd="python3 authServer.py --port ${PORT}"
+    else
+        echo -e "${YELLOW}No port given, using API_PORT / API_PORT_SECURE from .env${RESET}"
     fi
 
     if [ "$VERBOSE" = true ]; then
@@ -53,7 +54,12 @@ parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
             -p|--port)
-                PORT="$2"
+                if [[ -z "$2" || ! "$2" =~ ^[0-9]+$ ]] || (( 10#$2 < 1 || 10#$2 > 65535 )); then
+                    echo -e "${RED}Error: '$1' needs a port number between 1 and 65535${RESET}"
+                    echo "Use --help for usage information"
+                    exit 1
+                fi
+                PORT=$((10#$2))
                 shift 2
                 ;;
             -v|--verbose)
@@ -76,7 +82,7 @@ parse_args() {
 # ===== CONFIGURATION DISPLAY FUNCTION =====
 display_config() {
     echo -e "${BOLD}${GREEN}Configuration Summary:${RESET}"
-    echo -e "  Port:           ${YELLOW}$PORT${RESET}"
+    echo -e "  Port:           ${YELLOW}${PORT:-from .env (API_PORT / API_PORT_SECURE)}${RESET}"
     echo -e "  Verbose:        ${YELLOW}$([ "$VERBOSE" = true ] && echo 'Enabled' || echo 'Disabled')${RESET}"
     echo
 }
@@ -102,7 +108,7 @@ print_help() {
     echo
     echo -e "${BOLD}OPTIONS:${RESET}"
     echo -e "    -p, --port PORT            Specify server port (1-65535)"
-    echo -e "                               Default: 8000 (for HTTP) / 8443 (for HTTPS)"
+    echo -e "                               Default: API_PORT (HTTP) / API_PORT_SECURE (HTTPS) from .env"
     echo
     echo -e "    -v, --verbose              Enable debug logging"
     echo -e "                               Default: disabled"

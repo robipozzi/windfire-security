@@ -17,10 +17,10 @@ A companion sibling repo, `../windfire-security-client` (`$HOME/dev/windfire-sec
 
 ```bash
 cd server
-./start-auth-server.sh              # creates/activates venv, installs deps, runs on port 8000 (HTTP) or 8443 (HTTPS)
-./start-auth-server.sh -p 9000       # custom port
+./start-auth-server.sh              # creates/activates venv, installs deps, runs on API_PORT (HTTP) or API_PORT_SECURE (HTTPS) from .env
+./start-auth-server.sh -p 9000       # custom port (passed as authServer.py --port, overrides the .env port)
 ./start-auth-server.sh -v            # verbose/DEBUG logging
-./run-auth-server-background.sh      # same, but backgrounded, logs to logs/windfire-security-server.log
+./run-auth-server-background.sh      # same, but backgrounded; console output to logs/windfire-security.log, app log stays in logs/windfire-security-server.log
 ./stop-auth-server.sh                # stops the authServer.py process (refuses if the windfire-security systemd service runs it)
 ```
 
