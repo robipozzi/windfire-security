@@ -340,7 +340,7 @@ cd server
 ./start-auth-server.sh              # creates/activates venv, installs deps, runs on API_PORT (HTTP) or API_PORT_SECURE (HTTPS) from .env
 ./start-auth-server.sh -p 9000      # custom port, overrides the .env port
 ./start-auth-server.sh -v           # verbose/DEBUG logging
-./run-auth-server-background.sh     # same, but backgrounded; console output to logs/windfire-security.log, app log stays in logs/windfire-security-server.log
+./start-auth-server-background.sh   # same, but backgrounded; console output to logs/windfire-security.log, app log stays in logs/windfire-security-server.log
 ./stop-auth-server.sh               # stops the background server (on the Pi, use systemctl: see Deployment)
 ```
 

@@ -42,7 +42,7 @@
         state: stopped
       failed_when: false
 
-    # Fallback for processes started by hand with run-auth-server-background.sh before the systemd service existed
+    # Fallback for processes started by hand with start-auth-server-background.sh before the systemd service existed
     - name: Get PID for running process "{{ process }}"
       shell: "pgrep -f {{ process }}"
       register: app_pid
@@ -97,6 +97,16 @@
           - "--exclude=.env_PLACEHOLDER"
           - "--exclude=logs"
           - "--exclude=windfire-security-server.log*"
+      become: false
+
+    # The copy above has no --delete (it would remove .env, logs and certificates on the Pi), so scripts renamed
+    # in the repository are removed here
+    - name: Remove scripts renamed in the repository
+      ansible.builtin.file:
+        path: "{{ remote_windfire_security_dir }}/server/{{ item }}"
+        state: absent
+      loop:
+        - run-auth-server-background.sh
       become: false
 
     - name: Create "{{ remote_windfire_security_dir }}/server/logs" directory on remote server
