@@ -13,8 +13,8 @@ async def https_enforcement_middleware(request: Request, call_next):
     Custom middleware to enforce HTTPS with exceptions for health checks
     """
     logger.debug(f"Custom middleware to enforce HTTPS with exceptions for health checks")
-    # Skip HTTPS check for health endpoint (useful for load balancers)
-    if request.url.path == "/health":
+    # Skip HTTPS check for health endpoints, e.g. /v1/monitor/health (useful for load balancers)
+    if request.url.path.endswith("/health"):
         logger.debug("Health check endpoint accessed, skipping HTTPS enforcement")
         response = await call_next(request)
         return response

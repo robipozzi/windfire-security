@@ -49,7 +49,8 @@ async def keycloak_login(login_request: KeycloakLoginRequest):
             scope=token_response.get('scope')
         )
         
-    except KeycloakAuthError as e:
+    except (KeycloakAuthError, ServiceConfigError) as e:
+        # Log the real cause, but never return it (or the list of configured services) to the caller
         logger.warning(f"Keycloak authentication failed for user {login_request.username}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
