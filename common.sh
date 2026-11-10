@@ -29,6 +29,7 @@ ANSIBLE_SSH_KEY=$HOME/.ssh/ansible_rsa
 # ===== PYTHON VIRTUAL ENVIRONMENTS VARIABLES =====
 PYTHON_SERVER_VIRTUAL_ENV=windfire-security-server
 PYTHON_TEST_VIRTUAL_ENV=windfire-security-test
+PYTHON_SUITE_VIRTUAL_ENV=windfire-security-suite
 DEFAULT_USERNAME=windfire
 DEFAULT_AUTH_SERVICE_TEST=windfire-calendar-srv
 VERIFY_SSL_CERTS=true

@@ -1,0 +1,30 @@
+{
+  "_doc": "Targets of the live tests (no secrets). host null = environment not configured yet, its live tests are skipped. keycloak_url null = read KEYCLOAK_SERVER_URL from server/.env (dev only: the local server's own Keycloak). WINDFIRE_SECURITY_HOST / WINDFIRE_SECURITY_PORT / WINDFIRE_TEST_KEYCLOAK_URL override these values.",
+  "dev": {
+    "host": "localhost",
+    "port": 8444,
+    "root_ca": "~/opt/windfire/ssl/truststore/WindfireRootCA.crt",
+    "keycloak_url": null,
+    "keycloak_ca": "~/opt/keycloak/ssl/truststore/WindfireKeycloakRootCA.crt",
+    "realm": "windfire",
+    "service": "windfire-calendar-srv"
+  },
+  "test": {
+    "host": null,
+    "port": null,
+    "root_ca": "~/opt/windfire/ssl/truststore/WindfireRootCA.crt",
+    "keycloak_url": null,
+    "keycloak_ca": "~/opt/keycloak/ssl/truststore/WindfireKeycloakRootCA.crt",
+    "realm": "windfire",
+    "service": "windfire-calendar-srv"
+  },
+  "prod": {
+    "host": "raspberry01",
+    "port": 8444,
+    "root_ca": "~/opt/windfire/ssl/truststore/WindfireRootCA.crt",
+    "keycloak_url": "https://raspberry01:8443",
+    "keycloak_ca": "~/opt/keycloak/ssl/truststore/WindfireKeycloakRootCA.crt",
+    "realm": "windfire",
+    "service": "windfire-calendar-srv"
+  }
+}

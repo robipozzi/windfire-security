@@ -27,4 +27,7 @@ test/__pycache__/
 ssl/*.crt
 ssl/*.key
 ssl/*.srl
-ssl/*.csr
+ssl/*.csrtests/windfire-security-suite/
+tests/reports/
+tests/**/__pycache__/
+tests/.pytest_cache/
