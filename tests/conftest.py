@@ -80,6 +80,9 @@ def credentials(service):
 def auth_response(http, base_url, credentials):
     """One login per session, reused by every test that needs a token"""
     response = http.post(f"{base_url}/v1/security/auth", json=credentials, timeout=15)
+    if response.status_code == 429:
+        pytest.fail(f"login of '{credentials['username']}' was rate limited by the server (429, "
+                    f"Retry-After {response.headers.get('Retry-After')}s): wait and run the suite again")
     if response.status_code != 200:
         pytest.fail(f"login of '{credentials['username']}' for '{credentials['service']}' failed: "
                     f"{response.status_code} {response.text}. Check the credentials, then the Keycloak tests.")

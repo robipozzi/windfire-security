@@ -10,6 +10,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware # pyright: igno
 from fastapi.middleware.gzip import GZipMiddleware # pyright: ignore[reportMissingImports]
 from apiRouter import api
 from middlewares import https_enforcement_middleware
+from rateLimit import limiter, rate_limit_exceeded_handler, RateLimitExceeded
 from config.settings import settings
 # Initialize logger at the top so it's available everywhere 
 from logger.loggerFactory import logger_factory
@@ -44,6 +45,10 @@ app = FastAPI(
     lifespan=lifespan,
     redirect_slashes=False
 )
+
+# Brute-force protection for /v1/security/auth: per-IP limit (slowapi), applied only to decorated endpoints
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # =======================================================================
 # ================== START - Enable CORS configuration ==================

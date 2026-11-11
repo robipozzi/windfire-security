@@ -1,8 +1,11 @@
 """authServer.app through FastAPI's TestClient: routes, error mapping, middleware and CORS"""
+import logging
+
 import pytest
 from fastapi.testclient import TestClient
 
 import authServer
+import rateLimit
 import routers.authRouters as authRouters
 from keycloakAuth import KeycloakAuthError
 
@@ -101,6 +104,131 @@ def test_auth_unknown_service(client):
 def test_auth_missing_field(client, missing):
     body = {k: v for k, v in LOGIN.items() if k != missing}
     assert client.post("/v1/security/auth", json=body).status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/security/auth: rate limiting and logging
+# ---------------------------------------------------------------------------
+TOKENS = {"access_token": "suite.access.token", "expires_in": 300, "refresh_token": "suite-refresh-token"}
+
+
+@pytest.fixture
+def no_ip_limit(monkeypatch):
+    """Lift the per-IP limit, to exercise the per-username lockout on its own"""
+    monkeypatch.setattr(rateLimit.limiter, "enabled", False)
+
+
+def assert_too_many(response):
+    assert response.status_code == 429
+    assert response.json()["detail"] == rateLimit.TOO_MANY_ATTEMPTS_DETAIL
+    assert int(response.headers["retry-after"]) >= 1
+
+
+def test_auth_ip_rate_limit(client, monkeypatch):
+    monkeypatch.setattr(authRouters, "authenticate_user", raise_(KeycloakAuthError("401 Unauthorized")))
+    # Different usernames, so only the per-IP limit can fire
+    for i in range(5):
+        response = client.post("/v1/security/auth", json={**LOGIN, "username": f"user{i}"})
+        assert response.status_code == 401
+    response = client.post("/v1/security/auth", json={**LOGIN, "username": "user5"})
+    assert_too_many(response)
+    assert int(response.headers["retry-after"]) <= 61
+
+
+def test_auth_invalid_body_does_not_use_ip_quota(client, monkeypatch):
+    monkeypatch.setattr(authRouters, "authenticate_user", lambda *a: TOKENS)
+    for _ in range(6):
+        assert client.post("/v1/security/auth", json={"username": "x"}).status_code == 422
+    assert client.post("/v1/security/auth", json=LOGIN).status_code == 200
+
+
+def test_auth_username_lockout(client, monkeypatch, no_ip_limit):
+    calls = []
+    monkeypatch.setattr(authRouters, "authenticate_user", raise_(KeycloakAuthError("401 Unauthorized")))
+    # Mixed case: all count against the same lowercased username
+    for i in range(rateLimit.MAX_FAILURES):
+        username = "Suite-User" if i % 2 else "SUITE-USER"
+        assert client.post("/v1/security/auth", json={**LOGIN, "username": username}).status_code == 401
+
+    def would_succeed(*args):
+        calls.append(args)
+        return TOKENS
+
+    monkeypatch.setattr(authRouters, "authenticate_user", would_succeed)
+    response = client.post("/v1/security/auth", json=LOGIN)
+    assert_too_many(response)
+    assert int(response.headers["retry-after"]) <= rateLimit.LOCKOUT_SECONDS
+    assert calls == []  # Keycloak never called while locked
+    # Other usernames are not affected
+    assert client.post("/v1/security/auth", json={**LOGIN, "username": "someone-else"}).status_code == 200
+
+
+def test_auth_lockout_expires(client, monkeypatch, no_ip_limit):
+    monkeypatch.setattr(authRouters, "authenticate_user", raise_(KeycloakAuthError("401 Unauthorized")))
+    for _ in range(rateLimit.MAX_FAILURES):
+        client.post("/v1/security/auth", json=LOGIN)
+    assert client.post("/v1/security/auth", json=LOGIN).status_code == 429
+
+    now = rateLimit.time.monotonic()
+    monkeypatch.setattr(rateLimit.time, "monotonic", lambda: now + rateLimit.LOCKOUT_SECONDS + 1)
+    monkeypatch.setattr(authRouters, "authenticate_user", lambda *a: TOKENS)
+    assert client.post("/v1/security/auth", json=LOGIN).status_code == 200
+
+
+def test_auth_success_resets_failures(client, monkeypatch, no_ip_limit):
+    fail = raise_(KeycloakAuthError("401 Unauthorized"))
+    monkeypatch.setattr(authRouters, "authenticate_user", fail)
+    for _ in range(rateLimit.MAX_FAILURES - 1):
+        client.post("/v1/security/auth", json=LOGIN)
+    monkeypatch.setattr(authRouters, "authenticate_user", lambda *a: TOKENS)
+    assert client.post("/v1/security/auth", json=LOGIN).status_code == 200
+    monkeypatch.setattr(authRouters, "authenticate_user", fail)
+    for _ in range(rateLimit.MAX_FAILURES - 1):
+        assert client.post("/v1/security/auth", json=LOGIN).status_code == 401
+
+
+def test_failures_outside_window_do_not_count(monkeypatch):
+    tracker = rateLimit.LoginFailureTracker()
+    now = [1000.0]
+    monkeypatch.setattr(rateLimit.time, "monotonic", lambda: now[0])
+    for _ in range(rateLimit.MAX_FAILURES - 1):
+        assert tracker.record_failure("u") is False
+    now[0] += rateLimit.FAILURE_WINDOW_SECONDS + 1
+    assert tracker.record_failure("u") is False
+    assert tracker.lock_remaining("u") == 0
+
+
+@pytest.fixture
+def debug_logs():
+    """LOG_LEVEL=WARNING in the hermetic env: lower the loggers on the login path to see INFO and DEBUG too"""
+    loggers = [authRouters.logger, logging.getLogger("keycloakAuth")]
+    levels = [lg.level for lg in loggers]
+    for lg in loggers:
+        lg.setLevel(logging.DEBUG)
+    yield
+    for lg, level in zip(loggers, levels):
+        lg.setLevel(level)
+
+
+def test_auth_logs_never_contain_secrets(client, monkeypatch, no_ip_limit, debug_logs, caplog):
+    password = "suite-secret-password"
+    login = {**LOGIN, "password": password}
+    caplog.set_level(logging.DEBUG)
+
+    monkeypatch.setattr(authRouters, "authenticate_user", raise_(KeycloakAuthError("401 Unauthorized")))
+    client.post("/v1/security/auth", json=login)
+    failed = [r for r in caplog.records if r.name == "authRouters" and r.levelno == logging.WARNING]
+    assert len(failed) == 1
+    assert "suite-user" in failed[0].getMessage() and "testclient" in failed[0].getMessage()
+
+    caplog.clear()
+    monkeypatch.setattr(authRouters, "authenticate_user", lambda *a: TOKENS)
+    client.post("/v1/security/auth", json=login)
+    succeeded = [r for r in caplog.records if r.name == "authRouters" and "succeeded" in r.getMessage()]
+    assert len(succeeded) == 1 and succeeded[0].levelno == logging.INFO
+
+    for secret in (password, TOKENS["access_token"], TOKENS["refresh_token"]):
+        assert secret not in caplog.text
 
 
 # ---------------------------------------------------------------------------
