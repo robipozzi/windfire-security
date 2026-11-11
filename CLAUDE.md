@@ -119,4 +119,16 @@ Config loading: `config/settings.py` (`Settings`/`settings` singleton) reads `.e
 
 Logging: every module gets its logger via `logger.loggerFactory.logger_factory.get_logger(<module_name>)` (never `logging.getLogger` directly) — this ensures consistent formatting (`ColorFormatter`) and routes to both a `TimedRotatingFileHandler` (`server/logs/windfire-security-server.log`, midnight rotation, 7 backups) and stdout. Level is controlled by the `LOG_LEVEL` env var (defaults to `DEBUG`).
 
-Errors surface as `KeycloakAuthError` from `keycloakAuth.py`; routers translate them to HTTP 401 (bad credentials/invalid token, and an unknown service on `/auth` too, without listing the configured services) or 500 (unexpected).
+Errors surface as `KeycloakAuthError` from `keycloakAuth.py`; routers translate them to HTTP 401 (bad credentials/invalid token, and an unknown service on `/auth` too, without listing the configured services) or 500 (unexpected). `/auth` can also answer 429 (rate limiting, below).
+
+### Login rate limiting (`/v1/security/auth`)
+
+`server/rateLimit.py` protects the password grant against guessing. Both limits answer 429 with the same fixed detail `"Too many login attempts, try again later"` and a `Retry-After` header, so a caller can't tell which one fired:
+- **Per client IP**: slowapi, `5/minute;30/hour` (`AUTH_RATE_LIMIT`), keyed on the TCP peer address (`X-Forwarded-For` is not trusted: there is no reverse proxy in front of uvicorn). Requests rejected with 422 by body validation don't count.
+- **Per username**: after 10 failed logins (any 401, so a Keycloak outage counts too) for the same lowercased username within 15 minutes, that username gets 429 for 15 minutes and Keycloak is not called. A successful login resets the counter.
+
+State is in memory and per process: a restart clears it, and running more than one uvicorn worker would need shared storage (e.g. slowapi's Redis backend and a shared failure store). Unit tests reset both limits in an autouse fixture (`tests/unit/conftest.py`). The live tier logs in 4 times per run, so back-to-back runs can be rate limited: its negative `/auth` tests skip on 429.
+
+Logging: a failed login is one WARNING with the username (`!r`) and client IP only (the cause is at DEBUG), a success is INFO without the token, and `keycloakAuth.authenticate_with_password` logs at DEBUG only. Passwords and tokens are never logged.
+
+The Windfire UIs no longer call this endpoint: its callers are back-end services and the test tools, through `windfire-security-client` (whose `authenticate()` returns `None` on any non-200, 429 included). The request/response contract is unchanged.

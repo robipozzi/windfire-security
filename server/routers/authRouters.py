@@ -1,6 +1,9 @@
 from fastapi import HTTPException, status, Depends # pyright: ignore[reportMissingImports]
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials # pyright: ignore[reportMissingImports]
 from fastapi.routing import APIRouter # pyright: ignore[reportMissingImports]
+from fastapi.requests import Request # pyright: ignore[reportMissingImports]
+from rateLimit import (AUTH_RATE_LIMIT, LOCKOUT_SECONDS, MAX_FAILURES, client_ip, failure_tracker,
+                       limiter, too_many_attempts_response)
 from keycloakAuth import KeycloakAuthError, authenticate_user, verify_token
 from config.service_config_reader import ServiceConfigError
 from models.keycloakModels import KeycloakLoginRequest, KeycloakTokenResponse, KeycloakService
@@ -16,19 +19,31 @@ security = HTTPBearer()
 
 # Security authentication endpoints
 @router.post("/auth", response_model=KeycloakTokenResponse)
-async def keycloak_login(login_request: KeycloakLoginRequest):
+@limiter.limit(AUTH_RATE_LIMIT)
+async def keycloak_login(request: Request, login_request: KeycloakLoginRequest):
     """
     Authenticate with Keycloak and receive tokens
-    
+
+    Rate limited per client IP (AUTH_RATE_LIMIT) and per username (lockout after repeated
+    failures), both answering 429 with a Retry-After header: see rateLimit.py
+
     Args:
         login_request: username, password and service
-        
+
     Returns:
         Access token and refresh token
     """
     logger.info(f"====> /v1/security/auth endpoint called for service: {login_request.service} <====")
     logger.debug(f"---> Function keycloak_login() called <---")
-    logger.info(f"Keycloak login attempt for user {login_request.username} for service {login_request.service}")
+    ip = client_ip(request)
+    user_key = failure_tracker.normalize(login_request.username)
+
+    # Locked username: answer 429 without calling Keycloak
+    lock_remaining = failure_tracker.lock_remaining(user_key)
+    if lock_remaining > 0:
+        logger.warning(f"Login rejected for locked username {user_key!r} from {ip}")
+        return too_many_attempts_response(request, lock_remaining)
+
     try:
         # Authenticate with Keycloak
         logger.debug(f"---> Calling keycloakAuth authenticate_user() function <---")
@@ -37,9 +52,10 @@ async def keycloak_login(login_request: KeycloakLoginRequest):
             login_request.password,
             login_request.service
         )
-        
-        logger.info(f"User {login_request.username} authenticated successfully for {login_request.service} service with Keycloak")
-        
+
+        failure_tracker.reset(user_key)
+        logger.info(f"Login succeeded for {user_key!r} (service {login_request.service}) from {ip}")
+
         return KeycloakTokenResponse(
             access_token=token_response.get('access_token'),
             token_type="Bearer",
@@ -50,8 +66,12 @@ async def keycloak_login(login_request: KeycloakLoginRequest):
         )
         
     except (KeycloakAuthError, ServiceConfigError) as e:
-        # Log the real cause, but never return it (or the list of configured services) to the caller
-        logger.warning(f"Keycloak authentication failed for user {login_request.username}: {str(e)}")
+        # Audit line carries username and client IP only; the real cause goes to DEBUG and is
+        # never returned (nor the list of configured services) to the caller
+        logger.warning(f"Login failed for {user_key!r} from {ip}")
+        logger.debug(f"Login failure cause for {user_key!r}: {str(e)}")
+        if failure_tracker.record_failure(user_key):
+            logger.warning(f"Username {user_key!r} locked for {LOCKOUT_SECONDS}s after {MAX_FAILURES} failed logins")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password"
