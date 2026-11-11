@@ -24,5 +24,14 @@ def _restore_test_env(monkeypatch):
         monkeypatch.setenv(key, value)
 
 
+@pytest.fixture(autouse=True)
+def _reset_login_rate_limits():
+    """Each test starts with empty /v1/security/auth rate limits (per-IP and per-username)"""
+    from rateLimit import failure_tracker, limiter  # imported here so hermetic runs first
+    limiter.reset()
+    failure_tracker.reset_all()
+    yield
+
+
 def pytest_sessionfinish(session, exitstatus):
     shutil.rmtree(_TMP_DIR, ignore_errors=True)

@@ -108,7 +108,7 @@ class KeycloakAuth:
             KeycloakAuthError: If authentication fails
         """
         logger.debug(f"---> Function authenticate_with_password() called <---")
-        logger.info(f"Authenticating user: {username}")
+        logger.debug(f"Authenticating user: {username}")
         
         payload = {
             'grant_type': 'password',
@@ -135,11 +135,11 @@ class KeycloakAuth:
             token_data = response.json()
             self._store_tokens(token_data)
 
-            logger.info(f"User {username} authenticated successfully")
+            logger.debug(f"User {username} authenticated successfully")
             return token_data
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"Authentication failed for user {username}: {str(e)}")
+            logger.debug(f"Authentication failed for user {username}: {str(e)}")
             raise KeycloakAuthError(f"Authentication failed: {str(e)}")
     
     def authenticate_with_client_credentials(self) -> Dict[str, Any]:
