@@ -32,23 +32,24 @@ def plain_http(monkeypatch):
 def test_https_uses_api_port_secure(uvicorn_run, https):
     authServer.main()
     assert uvicorn_run == [{"host": "127.0.0.1", "port": API_PORT_SECURE,
-                            "ssl_keyfile": https[0], "ssl_certfile": https[1]}]
+                            "ssl_keyfile": https[0], "ssl_certfile": https[1], "proxy_headers": False}]
 
 
 def test_https_port_override(uvicorn_run, https):
     authServer.main(port_override=9100)
     assert uvicorn_run[0]["port"] == 9100
     assert uvicorn_run[0]["ssl_certfile"] == https[1]
+    assert uvicorn_run[0]["proxy_headers"] is False
 
 
 def test_http_uses_api_port(uvicorn_run, plain_http):
     authServer.main()
-    assert uvicorn_run == [{"host": "127.0.0.1", "port": API_PORT}]
+    assert uvicorn_run == [{"host": "127.0.0.1", "port": API_PORT, "proxy_headers": False}]
 
 
 def test_http_port_override(uvicorn_run, plain_http):
     authServer.main(port_override=9100)
-    assert uvicorn_run == [{"host": "127.0.0.1", "port": 9100}]
+    assert uvicorn_run == [{"host": "127.0.0.1", "port": 9100, "proxy_headers": False}]
 
 
 def test_https_with_missing_cert_files_exits(uvicorn_run, monkeypatch, tmp_path):

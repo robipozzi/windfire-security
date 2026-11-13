@@ -2,8 +2,8 @@ from fastapi import HTTPException, status, Depends # pyright: ignore[reportMissi
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials # pyright: ignore[reportMissingImports]
 from fastapi.routing import APIRouter # pyright: ignore[reportMissingImports]
 from fastapi.requests import Request # pyright: ignore[reportMissingImports]
-from rateLimit import (AUTH_RATE_LIMIT, LOCKOUT_SECONDS, MAX_FAILURES, client_ip, failure_tracker,
-                       limiter, too_many_attempts_response)
+from rateLimit import (AUTH_RATE_LIMIT, LOCKOUT_SECONDS, MAX_FAILURES, VERIFY_RATE_LIMIT, client_ip,
+                       failure_tracker, limiter, too_many_attempts_response)
 from keycloakAuth import KeycloakAuthError, authenticate_user, verify_token
 from config.service_config_reader import ServiceConfigError
 from models.keycloakModels import KeycloakLoginRequest, KeycloakTokenResponse, KeycloakService
@@ -84,7 +84,14 @@ async def keycloak_login(request: Request, login_request: KeycloakLoginRequest):
         )
 
 @router.post("/verify")
-async def verify(tokenValidate: KeycloakService, credentials: HTTPAuthorizationCredentials = Depends(security)):
+@limiter.limit(VERIFY_RATE_LIMIT)
+async def verify(request: Request, tokenValidate: KeycloakService,
+                 credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """
+    Verify a bearer token for a service
+
+    Rate limited per client IP (VERIFY_RATE_LIMIT), answering 429 with a Retry-After header: see rateLimit.py
+    """
     try:
         service = tokenValidate.service
         logger.info(f"====> /v1/security/verify endpoint called for service: {tokenValidate.service} <====")

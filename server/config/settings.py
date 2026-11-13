@@ -24,6 +24,7 @@ class Settings():
         logger.info(f"  KEYCLOAK_SERVER_URL: {os.getenv('KEYCLOAK_SERVER_URL')}")
         logger.info(f"  ENFORCE_HTTPS: {os.getenv('ENFORCE_HTTPS')}")
         logger.info(f"  ALLOWED_HOSTS: {os.getenv('ALLOWED_HOSTS')}")
+        logger.info(f"  ENABLE_API_DOCS: {os.getenv('ENABLE_API_DOCS')}")
         logger.info(f"  KEYCLOAK_VERIFY_SSL_CERTS: {os.getenv('KEYCLOAK_VERIFY_SSL_CERTS')}")
         logger.info(f"  KEYCLOAK_CA_CERT_PATH: {os.getenv('KEYCLOAK_CA_CERT_PATH')}")
         
@@ -37,7 +38,7 @@ class Settings():
         Returns:
             The value of the environment variable or None if not set
         """
-        if key in ('ENFORCE_HTTPS', 'KEYCLOAK_VERIFY_SSL_CERTS'):
+        if key in ('ENFORCE_HTTPS', 'KEYCLOAK_VERIFY_SSL_CERTS', 'ENABLE_API_DOCS'):
             raw = os.getenv(key)
             if raw is None:
                 return None

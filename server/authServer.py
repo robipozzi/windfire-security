@@ -21,6 +21,8 @@ SERVICE_NAME = settings.get('APP_NAME')
 # HTTPs enforcement and allowed hosts from config
 ENFORCE_HTTPS = settings.get('ENFORCE_HTTPS')
 ALLOWED_HOSTS = settings.get('ALLOWED_HOSTS').split(',')
+# Swagger UI, ReDoc and the OpenAPI schema are served only when ENABLE_API_DOCS is true (off by default)
+ENABLE_API_DOCS = settings.get('ENABLE_API_DOCS') == True
 # ========== END - VARIABLES SECTION ========== #
 
 @asynccontextmanager
@@ -38,12 +40,15 @@ async def lifespan(app):
 # ************************************************************
 # *************** START Initialize FastAPI app ***************
 # ************************************************************
+# With API docs disabled, /docs, /redoc and /openapi.json are not registered (404)
+docs_kwargs = {} if ENABLE_API_DOCS else {"docs_url": None, "redoc_url": None, "openapi_url": None}
 app = FastAPI(
     title=SERVICE_NAME,
     description="A secured SSL enforced REST API for security service operations",
     version="1.0.0",
     lifespan=lifespan,
-    redirect_slashes=False
+    redirect_slashes=False,
+    **docs_kwargs
 )
 
 # Brute-force protection for /v1/security/auth: per-IP limit (slowapi), applied only to decorated endpoints
@@ -95,10 +100,12 @@ app.add_middleware(GZipMiddleware, minimum_size=100)
 
 # Include API router to enable API endpoints
 app.include_router(api)
-# Root endpoint redirecting to API docs
+# Root endpoint: redirects to the API docs when they are enabled, otherwise returns the service name
 @app.get("/", tags=["Root"])
 async def root():
-    return RedirectResponse("/docs")
+    if ENABLE_API_DOCS:
+        return RedirectResponse("/docs")
+    return {"service": SERVICE_NAME}
 
 # Exception handlers
 @app.exception_handler(HTTPException)
@@ -114,7 +121,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Unexpected error: {str(exc)}")
+    # Stack trace goes to the log only, never into the response
+    logger.exception(f"Unexpected error on {request.url.path}: {str(exc)}")
     return JSONResponse(
         status_code=500,
         content={
@@ -144,6 +152,7 @@ def main(port_override=None):
     logger.info(f"  SSL_CERTFILE: {settings.get('SSL_CERTFILE')}")
     logger.info(f"  ENFORCE_HTTPS: {settings.get('ENFORCE_HTTPS')}")
     logger.info(f"  ALLOWED_HOSTS: {settings.get('ALLOWED_HOSTS')}")
+    logger.info(f"  ENABLE_API_DOCS: {settings.get('ENABLE_API_DOCS')}")
     logger.info(f"  KEYCLOAK_SERVER_URL: {settings.get('KEYCLOAK_SERVER_URL')}")
     
     logger.info(f"Starting {SERVICE_NAME} server...")
@@ -171,8 +180,9 @@ def main(port_override=None):
         logger.info(f"🔒 Starting server with HTTPS on {host}:{port} (port from {'--port' if port_override is not None else '.env API_PORT_SECURE'})")
         logger.info(f"   SSL Key: {ssl_keyfile}")
         logger.info(f"   SSL Cert: {ssl_certfile}")
-        # Start Uvicorn with SSL
-        uvicorn.run(app, host=host, port=port, ssl_keyfile=ssl_keyfile, ssl_certfile=ssl_certfile)
+        # Start Uvicorn with SSL. proxy_headers=False: no reverse proxy in front, X-Forwarded-* is not trusted
+        uvicorn.run(app, host=host, port=port, ssl_keyfile=ssl_keyfile, ssl_certfile=ssl_certfile,
+                    proxy_headers=False)
     else:
         if ENFORCE_HTTPS:
             logger.warning("⚠️  ENFORCE_HTTPS is enabled but no SSL certificates configured!")
@@ -183,8 +193,8 @@ def main(port_override=None):
             port = port_override
         logger.info(f"🌐 Starting server with HTTP on {host}:{port} (port from {'--port' if port_override is not None else '.env API_PORT'})")
         logger.warning("⚠️  Running without TLS/SSL - not recommended for production")
-        # Start Uvicorn without SSL 
-        uvicorn.run(app, host=host, port=port)
+        # Start Uvicorn without SSL. proxy_headers=False: no reverse proxy in front, X-Forwarded-* is not trusted
+        uvicorn.run(app, host=host, port=port, proxy_headers=False)
 
 ################### MAIN PROGRAM EXECUTION ###################
 if __name__ == "__main__":
