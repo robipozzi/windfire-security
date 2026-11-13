@@ -38,6 +38,7 @@ TEST_ENV = {
     "SSL_CERTFILE": str(_TMP_DIR / "missing.crt"),
     "ENFORCE_HTTPS": "true",
     "ALLOWED_HOSTS": "localhost,testserver",
+    "ENABLE_API_DOCS": "false",
     "KEYCLOAK_SERVER_URL": KEYCLOAK_URL,
     "KEYCLOAK_VERIFY_SSL_CERTS": "false",
     "KEYCLOAK_CA_CERT_PATH": "",

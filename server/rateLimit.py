@@ -1,11 +1,17 @@
 """
-Brute-force protection for POST /v1/security/auth
+Rate limiting for POST /v1/security/auth and POST /v1/security/verify
 
-Two independent limits, both in memory and per process (the server runs as a single uvicorn process):
+/auth (brute-force protection) has two independent limits:
 - per client IP, enforced by slowapi: AUTH_RATE_LIMIT
 - per username: after MAX_FAILURES failed logins within FAILURE_WINDOW_SECONDS, the username is
   locked for LOCKOUT_SECONDS and the endpoint answers 429 without calling Keycloak
-Both answer 429 with the same fixed detail and a Retry-After header.
+Both answer 429 with the same fixed detail (TOO_MANY_ATTEMPTS_DETAIL) and a Retry-After header.
+
+/verify has a per client IP limit only, enforced by slowapi: VERIFY_RATE_LIMIT. It is generous because
+windfire-calendar calls /verify from a single IP for every request it serves. Over the limit it answers
+429 with TOO_MANY_REQUESTS_DETAIL and a Retry-After header.
+
+All state is in memory and per process (the server runs as a single uvicorn process).
 """
 import threading
 import time
@@ -25,6 +31,9 @@ MAX_FAILURES = 10
 FAILURE_WINDOW_SECONDS = 15 * 60
 LOCKOUT_SECONDS = 15 * 60
 TOO_MANY_ATTEMPTS_DETAIL = "Too many login attempts, try again later"
+VERIFY_RATE_LIMIT = "300/minute"
+TOO_MANY_REQUESTS_DETAIL = "Too many requests, try again later"
+AUTH_PATH = "/v1/security/auth"
 # Above this many tracked usernames, entries with no recent failure and no active lock are dropped
 _MAX_TRACKED_USERNAMES = 10_000
 
@@ -102,12 +111,13 @@ class LoginFailureTracker:
 failure_tracker = LoginFailureTracker()
 
 
-def too_many_attempts_response(request: Request, retry_after: int) -> JSONResponse:
+def too_many_attempts_response(request: Request, retry_after: int,
+                               detail: str = TOO_MANY_ATTEMPTS_DETAIL) -> JSONResponse:
     """429 in the same shape as authServer's HTTPException handler, with a fixed detail"""
     return JSONResponse(
         status_code=429,
         content={
-            "detail": TOO_MANY_ATTEMPTS_DETAIL,
+            "detail": detail,
             "path": request.url.path,
             "timestamp": datetime.now(UTC).isoformat(),
         },
@@ -117,11 +127,12 @@ def too_many_attempts_response(request: Request, retry_after: int) -> JSONRespon
 
 def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
     """slowapi IP limit breached: 429 with Retry-After until the breached window resets"""
-    logger.warning(f"Login rate limit ({exc.limit.limit}) exceeded by client {client_ip(request)}")
+    logger.warning(f"Rate limit ({exc.limit.limit}) on {request.url.path} exceeded by client {client_ip(request)}")
     try:
         breached = request.state.view_rate_limit
         reset_at, _remaining = request.app.state.limiter.limiter.get_window_stats(breached[0], *breached[1])
         retry_after = int(reset_at - time.time()) + 1
     except Exception:
         retry_after = exc.limit.limit.get_expiry()
-    return too_many_attempts_response(request, retry_after)
+    detail = TOO_MANY_ATTEMPTS_DETAIL if request.url.path == AUTH_PATH else TOO_MANY_REQUESTS_DETAIL
+    return too_many_attempts_response(request, retry_after, detail)
