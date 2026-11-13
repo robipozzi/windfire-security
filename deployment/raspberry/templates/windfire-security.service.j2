@@ -16,6 +16,29 @@ Restart=on-failure
 RestartSec=5
 StandardOutput=append:{{ remote_windfire_security_dir }}/server/logs/{{ service_name }}.log
 StandardError=append:{{ remote_windfire_security_dir }}/server/logs/{{ service_name }}.log
+# Sandbox: the whole filesystem is read-only to the service (ProtectSystem=strict, ProtectHome=read-only)
+# except ReadWritePaths, the logs directory the app writes to.
+# No MemoryDenyWriteExecute: it breaks JIT runtimes (JVM, Node/V8) and some Python wheels.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths={{ remote_windfire_security_dir }}/server/logs
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target
