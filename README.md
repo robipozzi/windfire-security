@@ -331,7 +331,8 @@ cp .env_PLACEHOLDER .env
 cp config/service_config.json_PLACEHOLDER config/service_config.json
 ```
 
-- **`.env`** sets `APP_NAME`, `API_HOST`, `API_PORT`/`API_PORT_SECURE`, `SSL_KEYFILE`/`SSL_CERTFILE`, `ENFORCE_HTTPS`, `ALLOWED_HOSTS` and `KEYCLOAK_SERVER_URL`.
+- **`.env`** sets `APP_NAME`, `API_HOST`, `API_PORT`/`API_PORT_SECURE`, `SSL_KEYFILE`/`SSL_CERTFILE`, `ENFORCE_HTTPS`, `ALLOWED_HOSTS`, `ENABLE_API_DOCS` and `KEYCLOAK_SERVER_URL`.
+- **`ENABLE_API_DOCS`** turns on Swagger UI (`/docs`), ReDoc (`/redoc`) and the OpenAPI schema (`/openapi.json`). If it is unset or false, those paths return 404 and `GET /` returns `{"service": "<APP_NAME>"}` instead of redirecting to `/docs`. The placeholder sets it to `true` for local runs. The Raspberry deployment sets it to `false`.
 - **`config/service_config.json`** is a per-service Keycloak `realm`/`client_id`/`client_secret` map, keyed by service name (e.g. `windfire-calendar-srv`). This is how a single Authentication Service instance backs multiple Windfire client services.
 
 ### Running the Authentication Service
@@ -352,6 +353,8 @@ Routes are nested under a version prefix:
 - `POST /v1/security/auth` — authenticates a user against Keycloak (via `authenticate_user`) and returns tokens.
 - `POST /v1/security/verify` — verifies a token, by default locally against Keycloak's public keys (no special Keycloak client permissions needed). See [Token verification](#token-verification).
 
+The server is exposed directly by uvicorn, with no reverse proxy in front. For that reason it does not trust forwarded headers. uvicorn runs with `proxy_headers=False`, and when `ENFORCE_HTTPS` is true the HTTPS redirect looks only at the connection's real scheme, so `X-Forwarded-Proto` and `X-Forwarded-Ssl` are ignored.
+
 ### Token verification
 `/v1/security/verify` accepts a token only if all of these hold:
 - the signature matches one of Keycloak's public keys (JWKS) for the service's realm;
@@ -366,6 +369,8 @@ This needs two things on the Keycloak side:
 Keycloak's public keys are cached in memory for 10 minutes. A token signed with an unknown key ID (for example right after a key rotation) triggers a new fetch, but at most once every 30 seconds, so random key IDs cannot make the service call Keycloak on every request.
 
 When verification fails, the response is always `401` with `{"detail": "Invalid or expired token"}`, including when the requested service is not configured. The actual reason (expired, wrong audience, wrong issuer, unknown service, and so on) is written only to the server log, in `logs/windfire-security-server.log`.
+
+`/v1/security/verify` is rate limited per client IP to 300 calls per minute (`VERIFY_RATE_LIMIT` in [rateLimit.py](server/rateLimit.py)). The limit is generous because windfire-calendar calls `/verify` from a single IP for every request it serves. Over the limit, the endpoint returns `429` with `{"detail": "Too many requests, try again later"}` and a `Retry-After` header.
 
 ## Testing the Authentication Service
 One command checks that Windfire Security still works after a code change or a merged pull request (Dependabot or other):

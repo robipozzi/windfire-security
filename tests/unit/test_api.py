@@ -1,4 +1,5 @@
 """authServer.app through FastAPI's TestClient: routes, error mapping, middleware and CORS"""
+import importlib
 import logging
 
 import pytest
@@ -9,7 +10,7 @@ import rateLimit
 import routers.authRouters as authRouters
 from keycloakAuth import KeycloakAuthError
 
-from hermetic import OTHER_SERVICE, SERVICE
+from hermetic import OTHER_SERVICE, SERVICE, TEST_ENV
 
 INVALID_TOKEN_DETAIL = "Invalid or expired token"
 SECURITY_HEADERS = {
@@ -49,10 +50,45 @@ def test_health(client):
     assert response.json()["status"] == "healthy"
 
 
-def test_root_redirects_to_docs(client):
+def test_root_returns_service_name_without_docs(client):
+    # Hermetic env: ENABLE_API_DOCS=false, so / does not point at the (missing) docs
     response = client.get("/")
-    assert response.status_code == 307
-    assert response.headers["location"] == "/docs"
+    assert response.status_code == 200
+    assert response.json() == {"service": TEST_ENV["APP_NAME"]}
+
+
+# ---------------------------------------------------------------------------
+# API docs: only served with ENABLE_API_DOCS=true
+# ---------------------------------------------------------------------------
+@pytest.fixture(params=[False, True], ids=["docs-off", "docs-on"])
+def api_docs(request, monkeypatch):
+    """authServer re-imported with ENABLE_API_DOCS set (it is read when the app is built), restored after"""
+    enabled = request.param
+    monkeypatch.setenv("ENABLE_API_DOCS", "true" if enabled else "false")
+    importlib.reload(authServer)
+    try:
+        with TestClient(authServer.app, base_url="https://localhost", follow_redirects=False) as c:
+            yield enabled, c
+    finally:
+        monkeypatch.setenv("ENABLE_API_DOCS", TEST_ENV["ENABLE_API_DOCS"])
+        importlib.reload(authServer)
+
+
+@pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
+def test_api_docs_exposed_only_when_enabled(api_docs, path):
+    enabled, c = api_docs
+    assert c.get(path).status_code == (200 if enabled else 404)
+
+
+def test_root_follows_api_docs_setting(api_docs):
+    enabled, c = api_docs
+    response = c.get("/")
+    if enabled:
+        assert response.status_code == 307
+        assert response.headers["location"] == "/docs"
+    else:
+        assert response.status_code == 200
+        assert response.json() == {"service": TEST_ENV["APP_NAME"]}
 
 
 def test_v2_does_not_exist(client):
@@ -272,13 +308,38 @@ def test_verify_missing_service(client):
     assert client.post("/v1/security/verify", json={}, headers=BEARER).status_code == 422
 
 
+def test_verify_ip_rate_limit(client, monkeypatch):
+    # VERIFY_RATE_LIMIT is 300/minute per client IP: the 301st call within the minute gets 429
+    monkeypatch.setattr(authRouters, "verify_token", lambda token, service, method: {"sub": "suite-user-id"})
+    assert rateLimit.VERIFY_RATE_LIMIT == "300/minute"
+    for i in range(300):
+        response = client.post("/v1/security/verify", json={"service": SERVICE}, headers=BEARER)
+        assert response.status_code == 200, i
+    response = client.post("/v1/security/verify", json={"service": SERVICE}, headers=BEARER)
+    assert response.status_code == 429
+    assert response.json()["detail"] == rateLimit.TOO_MANY_REQUESTS_DETAIL
+    assert 1 <= int(response.headers["retry-after"]) <= 61
+    # The /auth quota is separate
+    monkeypatch.setattr(authRouters, "authenticate_user", lambda *a: TOKENS)
+    assert client.post("/v1/security/auth", json=LOGIN).status_code == 200
+
+
 # ---------------------------------------------------------------------------
 # Middleware: HTTPS enforcement, security headers, trusted hosts
 # ---------------------------------------------------------------------------
 def test_plain_http_is_redirected_to_https(http_client):
-    response = http_client.get("/docs")
+    response = http_client.get("/")
     assert response.status_code == 307
-    assert response.headers["location"] == "https://localhost/docs"
+    assert response.headers["location"] == "https://localhost/"
+
+
+@pytest.mark.parametrize("header", [{"X-Forwarded-Proto": "https"}, {"X-Forwarded-Ssl": "on"}],
+                         ids=["x-forwarded-proto", "x-forwarded-ssl"])
+def test_forwarded_headers_do_not_bypass_https(http_client, header):
+    # No reverse proxy in front: client-supplied forwarded headers must not count as HTTPS
+    response = http_client.post("/v1/security/verify", json={"service": SERVICE}, headers={**BEARER, **header})
+    assert response.status_code == 307
+    assert response.headers["location"].startswith("https://")
 
 
 def test_plain_http_is_redirected_for_api_calls(http_client):
@@ -294,10 +355,10 @@ def test_health_is_exempt_from_https_enforcement(http_client):
     assert response.json()["status"] == "healthy"
 
 
-@pytest.mark.parametrize("path", ["/docs", "/v1/security/verify"])
+@pytest.mark.parametrize("path", ["/", "/v1/security/verify"])
 def test_security_headers(client, path):
     # Checked on non-health paths: the health exemption skips the headers too
-    response = client.get(path) if path == "/docs" else client.post(path, json={"service": SERVICE})
+    response = client.get(path) if path == "/" else client.post(path, json={"service": SERVICE})
     for header, value in SECURITY_HEADERS.items():
         assert response.headers.get(header) == value, header
 

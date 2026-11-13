@@ -4,7 +4,7 @@ import pytest
 from config.settings import settings
 
 
-@pytest.mark.parametrize("key", ["ENFORCE_HTTPS", "KEYCLOAK_VERIFY_SSL_CERTS"])
+@pytest.mark.parametrize("key", ["ENFORCE_HTTPS", "KEYCLOAK_VERIFY_SSL_CERTS", "ENABLE_API_DOCS"])
 @pytest.mark.parametrize("raw, expected", [
     ("true", True), ("TRUE", True), (" True ", True), ("1", True), ("yes", True), ("on", True),
     ("false", False), ("0", False), ("no", False), ("", False), ("anything", False),
@@ -14,7 +14,7 @@ def test_bool_keys_are_coerced(monkeypatch, key, raw, expected):
     assert settings.get(key) is expected
 
 
-@pytest.mark.parametrize("key", ["ENFORCE_HTTPS", "KEYCLOAK_VERIFY_SSL_CERTS"])
+@pytest.mark.parametrize("key", ["ENFORCE_HTTPS", "KEYCLOAK_VERIFY_SSL_CERTS", "ENABLE_API_DOCS"])
 def test_bool_key_unset_is_none(monkeypatch, key):
     monkeypatch.delenv(key, raising=False)
     assert settings.get(key) is None
