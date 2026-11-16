@@ -1,5 +1,6 @@
 --- # Ansible Playbook to deploy Keycloak server certificate signed by Windfire Keycloak Root CA
-# Copy certificate and key, update keycloak.conf, stop, build if needed, restart Keycloak, backup old certificate and key
+# Copy certificate and key, update keycloak.conf (TLS files, cache=local), stop, build if keycloak.conf changed,
+# restart Keycloak, backup old certificate and key
 - hosts: identitymanager
   remote_user: "{{ user }}"
   become: yes
@@ -107,7 +108,6 @@
     - name: Set Keycloak facts from systemd unit
       set_fact:
         kc_sh: "{{ keycloak_exec_start.stdout | regex_search('path=([^ ;]+)', '\\1') | default([''], true) | first }}"
-        keycloak_optimized: "{{ '--optimized' in keycloak_exec_start.stdout }}"
         backup_stamp: "{{ ansible_facts.date_time.date | replace('-', '') }}-{{ ansible_facts.date_time.hour }}{{ ansible_facts.date_time.minute }}{{ ansible_facts.date_time.second }}"
     ##########################################################
     ##### Copy server certificate and key to raspberry01 #####
@@ -162,14 +162,21 @@
         state: absent
         backup: yes
       register: kc_conf_keystore
+    - name: Set cache=local in "{{ keycloak_conf }}" (single node, no JGroups cluster discovery)
+      lineinfile:
+        path: "{{ keycloak_conf }}"
+        regexp: '^\s*cache\s*='
+        line: "cache=local"
+        backup: yes
+      register: kc_conf_cache
     - name: Decide if Keycloak must be restarted and built
       set_fact:
-        kc_conf_changed: "{{ kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed }}"
+        kc_conf_changed: "{{ kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed or kc_conf_cache is changed }}"
         # Each lineinfile backs up keycloak.conf before its own change: the first backup taken is the original file
-        kc_conf_backup: "{{ [kc_conf_cert.backup | default(''), kc_conf_key.backup | default(''), kc_conf_keystore.backup | default('')] | select | first | default('') }}"
-        restart_needed: "{{ tls_cert_copy is changed or tls_key_copy is changed or kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed or keycloak_force_build | bool }}"
-        # https-certificate-* are runtime options: build only if forced, or if keycloak.conf changed and Keycloak starts --optimized
-        build_needed: "{{ keycloak_force_build | bool or ((kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed) and keycloak_optimized | bool) }}"
+        kc_conf_backup: "{{ [kc_conf_cert.backup | default(''), kc_conf_key.backup | default(''), kc_conf_keystore.backup | default(''), kc_conf_cache.backup | default('')] | select | first | default('') }}"
+        restart_needed: "{{ tls_cert_copy is changed or tls_key_copy is changed or kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed or kc_conf_cache is changed or keycloak_force_build | bool }}"
+        # cache is a build option, read only by kc.sh build when Keycloak starts --optimized: build whenever keycloak.conf changed, or if forced
+        build_needed: "{{ keycloak_force_build | bool or kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed or kc_conf_cache is changed }}"
     ######################################################
     ##### Stop, build if needed and restart Keycloak #####
     ######################################################
@@ -221,6 +228,12 @@
             label: "{{ item.dest }}"
           when: item.backup | length > 0
           no_log: true
+        - name: Rebuild Keycloak with previous keycloak.conf
+          # The build may already hold the new build options (cache): match it to the restored file before restarting
+          command: "{{ kc_sh }} --config-file={{ keycloak_conf }} build"
+          become_user: "{{ keycloak_user }}"
+          environment: "{{ dict(keycloak_unit_env.stdout.split() | map('regex_search', '^([^=]+)=(.*)$', '\\1', '\\2') | select | list) }}"
+          when: build_needed | bool and kc_sh is search('kc\.sh$')
         - name: Restart Keycloak with previous configuration
           systemd:
             name: "{{ keycloak_service }}"

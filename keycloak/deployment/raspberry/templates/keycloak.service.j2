@@ -1,4 +1,4 @@
-# Managed by keycloak-install.yaml, keycloak-upgrade.yaml overrides ExecStart with keycloak.service.d/10-keycloak-version.conf
+# Managed by keycloak-install.yaml, keycloak-upgrade.yaml overrides ExecStart and ReadWritePaths with keycloak.service.d/10-keycloak-version.conf
 # No admin credentials here: the first admin is created once by kc.sh bootstrap-admin
 [Unit]
 Description=Keycloak Identity and Access Management
@@ -17,6 +17,33 @@ Restart=on-failure
 RestartSec=10
 # The first start after an upgrade migrates the database
 TimeoutStartSec=600
+# Sandbox: the whole filesystem is read-only to Keycloak (ProtectSystem=strict, ProtectHome=yes) except ReadWritePaths,
+# its data/ directory: H2 database (data/h2), Quarkus temporary files (data/tmp) and data/log if file logging is enabled
+# (console logs go to the journal). lib/quarkus stays read-only: start --optimized never re-augments, kc.sh build runs
+# from the playbooks outside this unit. keycloak.conf and the TLS files in {{ keycloak_conf | dirname }} are only read.
+# keycloak-upgrade.yaml moves ReadWritePaths to the new version's data/ in its drop-in.
+# No MemoryDenyWriteExecute: it breaks the JVM JIT.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths={{ keycloak_home }}/data
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Port {{ keycloak_https_port }} is unprivileged: no capability needed
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target
