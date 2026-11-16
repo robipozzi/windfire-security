@@ -47,7 +47,7 @@ The manual scripts in `test/` are still there: `./start-test-server.sh -e dev` r
 ## Keycloak install, run, upgrade
 
 All entry points are interactive shell scripts that take the menu choice as an optional argument:
-- `keycloak/start-keycloak.sh [1|2|3]` runs Keycloak locally: 1 is `start-dev`, 2 is `start` with the localhost PEM cert, 3 is Docker.
+- `keycloak/start-keycloak.sh [1|2|3]` runs Keycloak locally: 1 is `start-dev`, 2 is `start --cache=local` with the localhost PEM cert, 3 is Docker.
 - `keycloak/deployment/install-keycloak.sh [1|2] [--side-by-side]` does a fresh install: 1 on raspberry01 (`raspberry/keycloak-install.yaml`), 2 on localhost (`localhost/keycloak-install.yaml`, no sudo, own `localhost/ansible.cfg`).
 - `upgrade-keycloak.sh` upgrades raspberry01 only (`raspberry/keycloak-upgrade.yaml`).
 - `backup-keycloak.sh [-v <version>] [-y]` backs up raspberry01 to the Mac (`raspberry/keycloak-backup.yaml`, settings in `raspberry/conf/keycloak-backup-config.yml`).
@@ -68,10 +68,18 @@ Gotchas verified against 26.8.1:
 - `bootstrap-admin` cannot run before the TLS files named in `keycloak.conf` exist.
 - `bootstrap-admin` exits 0 even when it fails, so the playbook checks its output.
 - `bootstrap-admin` gets its credentials through `WINDFIRE_KC_ADMIN_*` env vars, never `KC_BOOTSTRAP_ADMIN_*`, which Keycloak also reads as config and would use to create the user twice.
+- `keycloak.conf` sets `cache=local`: it is a single node, and the default `ispn` cache starts JGroups cluster discovery. `cache` is a build option, so the unit's `start --optimized` only picks up a change after `kc.sh build`. `keycloak-tls-deploy.yaml` enforces `cache=local` and builds whenever it changed any line of `keycloak.conf` (or with `-e keycloak_force_build=true`). Its rescue rebuilds after restoring the old `keycloak.conf`. `keycloak-upgrade.yaml` also enforces `cache=local` and always builds the new version.
 
-On raspberry01 Keycloak runs only as the `keycloak` systemd unit, and the unit must never carry admin credentials (`KEYCLOAK_ADMIN*`/`KC_BOOTSTRAP_ADMIN_*`). The upgrade playbook:
+On raspberry01 Keycloak runs only as the `keycloak` systemd unit, and the unit must never carry admin credentials (`KEYCLOAK_ADMIN*`/`KC_BOOTSTRAP_ADMIN_*`). The unit is sandboxed like the app units:
+- `ProtectSystem=strict` and `ProtectHome=yes` make the filesystem read-only except `ReadWritePaths=/opt/keycloak/keycloak-<version>/data`. That directory holds the H2 database, `data/tmp`, and `data/log` if file logging is ever turned on. Console logs go to the journal.
+- `lib/quarkus` stays read-only. `start --optimized` never rebuilds, and `kc.sh build` runs from the playbooks outside the unit. A unit started without `--optimized` would fail its auto-build.
+- `data/` must exist before the start, so the install and upgrade playbooks always create it.
+- The unit also has `NoNewPrivileges`, an empty `CapabilityBoundingSet` (8443 needs none), private `/tmp` and `/dev`, the `ProtectKernel*`/`ProtectControlGroups`/`ProtectClock` settings, `RestrictNamespaces`, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX`, native syscalls only and `UMask=0077`. There is no `MemoryDenyWriteExecute` because the JVM JIT needs it off.
+- The sandbox comes from `templates/keycloak.service.j2`, which only a fresh install writes. A unit installed earlier keeps its old file until Keycloak is reinstalled.
+
+The upgrade playbook:
 - installs the new version side by side in `/opt/keycloak/keycloak-<version>`, after backing up to `/opt/keycloak/backup-<ts>.tgz` and exporting to `/opt/keycloak/export-<ts>`;
-- copies (never moves) `data/`, and points `ExecStart` at the new `kc.sh` via the drop-in `keycloak.service.d/10-keycloak-version.conf`;
+- copies (never moves) `data/`, and points `ExecStart` at the new `kc.sh` via the drop-in `keycloak.service.d/10-keycloak-version.conf`. The same drop-in moves `WorkingDirectory` and every `ReadWritePaths` entry under the old home to the new home. It writes an empty `ReadWritePaths=` first, because drop-ins add to the list, and without the reset the old `data/` would stay writable;
 - on failure, restores `keycloak.conf` and the drop-in and restarts the old version.
 
 Its pre-flight:

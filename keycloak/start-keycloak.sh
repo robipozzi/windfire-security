@@ -38,7 +38,7 @@ selectPlatform()
 			checkTLSFiles
 			selectLogLevel
 			bootstrapAdminOnFirstStart
-			"$KEYCLOAK_HOME/bin/kc.sh" start --http-enabled=false --https-certificate-file="$KEYCLOAK_CONF_TLS_DIR/$KEYCLOAK_CERT_NAME.crt" --https-certificate-key-file="$KEYCLOAK_CONF_TLS_DIR/$KEYCLOAK_CERT_NAME.key" --hostname=localhost --log-level="$LOG_LEVEL"
+			"$KEYCLOAK_HOME/bin/kc.sh" start --cache=local --http-enabled=false --https-certificate-file="$KEYCLOAK_CONF_TLS_DIR/$KEYCLOAK_CERT_NAME.crt" --https-certificate-key-file="$KEYCLOAK_CONF_TLS_DIR/$KEYCLOAK_CERT_NAME.key" --hostname=localhost --log-level="$LOG_LEVEL"
 			;;
         3)  checkDocker
 			if docker container inspect "$KEYCLOAK_CONTAINER_NAME" >/dev/null 2>&1; then
