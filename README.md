@@ -85,7 +85,7 @@ The procedures under **[keycloak/deployment/](keycloak/deployment/)** are:
 | [schedule-keycloak-backup.sh](keycloak/deployment/schedule-keycloak-backup.sh) `[--remove] [-y]` | Installs (or removes) the weekly Keycloak backup on raspberry01, keeping the last 4 |
 | [fetch-keycloak-backups.sh](keycloak/deployment/fetch-keycloak-backups.sh) `[-y]` | Copies the weekly backups to the Mac, encrypts them with sops and removes them from raspberry01 |
 | [restore-keycloak.sh](keycloak/deployment/restore-keycloak.sh) `[-e localhost\|raspberry] [-f <backup>] [-m import\|data] [-p <port>] [-k] [-c] [-y]` | Restores a backup into a scratch Keycloak on the Mac (test) or into raspberry01, and checks realms, clients and users |
-| [deploy-keycloak-tls.sh](keycloak/deployment/deploy-keycloak-tls.sh) | Deploys a new raspberry01 server certificate |
+| [deploy-keycloak-tls.sh](keycloak/deployment/deploy-keycloak-tls.sh) `[ansible-playbook args, e.g. -e keycloak_force_build=true]` | Deploys a new raspberry01 server certificate and reinstalls the Keycloak systemd unit from its template |
 | [uninstall-keycloak.sh](keycloak/deployment/uninstall-keycloak.sh) `[-y]` | Removes Keycloak from raspberry01 |
 
 #### Run Keycloak locally

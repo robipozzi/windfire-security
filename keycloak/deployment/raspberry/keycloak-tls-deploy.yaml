@@ -1,6 +1,8 @@
 --- # Ansible Playbook to deploy Keycloak server certificate signed by Windfire Keycloak Root CA
 # Copy certificate and key, update keycloak.conf (TLS files, cache=local), stop, build if keycloak.conf changed,
 # restart Keycloak, backup old certificate and key
+# The systemd unit is re-templated on every run from templates/keycloak.service.j2, with keycloak_home and JAVA_HOME
+# read from the running unit (so it follows the keycloak-upgrade.yaml drop-in): a change restarts Keycloak
 - hosts: identitymanager
   remote_user: "{{ user }}"
   become: yes
@@ -109,6 +111,37 @@
       set_fact:
         kc_sh: "{{ keycloak_exec_start.stdout | regex_search('path=([^ ;]+)', '\\1') | default([''], true) | first }}"
         backup_stamp: "{{ ansible_facts.date_time.date | replace('-', '') }}-{{ ansible_facts.date_time.hour }}{{ ansible_facts.date_time.minute }}{{ ansible_facts.date_time.second }}"
+    - name: Set keycloak_home and java_home for the systemd unit from the running unit
+      set_fact:
+        # kc_sh is <keycloak_home>/bin/kc.sh, from the upgrade drop-in's ExecStart if there is one
+        keycloak_home: "{{ kc_sh | dirname | dirname }}"
+        java_home: "{{ unit_env.JAVA_HOME | default(java_home_fallback, true) }}"
+      vars:
+        unit_env: "{{ dict(keycloak_unit_env.stdout.split() | reject('match', 'KEYCLOAK_ADMIN') | map('regex_search', '^([^=]+)=(.*)$', '\\1', '\\2') | select | list) }}"
+    ######################################
+    ##### Install the systemd unit   #####
+    ######################################
+    - name: Fail if kc.sh cannot be found in Keycloak systemd unit
+      assert:
+        that: kc_sh is search('kc\.sh$')
+        fail_msg: "kc.sh not found in {{ keycloak_service }} ExecStart ({{ keycloak_exec_start.stdout }}), cannot template the unit"
+        quiet: true
+    - name: Ensure "{{ keycloak_home }}/data" exists (the unit's only ReadWritePaths, it must exist before the start)
+      file:
+        path: "{{ keycloak_home }}/data"
+        state: directory
+        owner: "{{ keycloak_user }}"
+        group: "{{ keycloak_group }}"
+        mode: "0750"
+    - name: Install Keycloak systemd unit
+      template:
+        src: "{{ src_dir }}/templates/keycloak.service.j2"
+        dest: "/etc/systemd/system/{{ keycloak_service }}.service"
+        owner: root
+        group: root
+        mode: "0644"
+        backup: yes
+      register: keycloak_unit
     ##########################################################
     ##### Copy server certificate and key to raspberry01 #####
     ##########################################################
@@ -174,7 +207,7 @@
         kc_conf_changed: "{{ kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed or kc_conf_cache is changed }}"
         # Each lineinfile backs up keycloak.conf before its own change: the first backup taken is the original file
         kc_conf_backup: "{{ [kc_conf_cert.backup | default(''), kc_conf_key.backup | default(''), kc_conf_keystore.backup | default(''), kc_conf_cache.backup | default('')] | select | first | default('') }}"
-        restart_needed: "{{ tls_cert_copy is changed or tls_key_copy is changed or kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed or kc_conf_cache is changed or keycloak_force_build | bool }}"
+        restart_needed: "{{ tls_cert_copy is changed or tls_key_copy is changed or kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed or kc_conf_cache is changed or keycloak_unit is changed or keycloak_force_build | bool }}"
         # cache is a build option, read only by kc.sh build when Keycloak starts --optimized: build whenever keycloak.conf changed, or if forced
         build_needed: "{{ keycloak_force_build | bool or kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed or kc_conf_cache is changed }}"
     ######################################################
@@ -215,7 +248,7 @@
           delegate_to: localhost
           become: no
       rescue:
-        - name: Restore previous certificate, key and keycloak.conf
+        - name: Restore previous certificate, key, keycloak.conf and systemd unit
           copy:
             src: "{{ item.backup }}"
             dest: "{{ item.dest }}"
@@ -224,6 +257,7 @@
             - { backup: "{{ tls_cert_copy.backup_file | default('') }}", dest: "{{ remote_server_cert }}" }
             - { backup: "{{ tls_key_copy.backup_file | default('') }}", dest: "{{ remote_server_key }}" }
             - { backup: "{{ kc_conf_backup }}", dest: "{{ keycloak_conf }}" }
+            - { backup: "{{ keycloak_unit.backup_file | default('') }}", dest: "/etc/systemd/system/{{ keycloak_service }}.service" }
           loop_control:
             label: "{{ item.dest }}"
           when: item.backup | length > 0
@@ -283,5 +317,6 @@
         msg:
           - "{{ deployed_cert.stdout_lines | default(['certificate not read in check mode']) }}"
           - "keycloak.conf changed: {{ kc_conf_changed }} (backup: {{ kc_conf_backup | default('none', true) }})"
+          - "Systemd unit changed: {{ keycloak_unit is changed }} (backup: {{ keycloak_unit.backup_file | default('none', true) }})"
           - "Keycloak restarted: {{ restart_needed }}, built: {{ build_needed }}"
           - "Old certificate and key backup: {{ (old_tls_to_backup | length > 0) | ternary(keycloak_tls_dir ~ '/backup-' ~ backup_stamp, 'nothing to backup') }}"
