@@ -1,0 +1,361 @@
+--- # Ansible Playbook to restore a Keycloak backup on raspberry01, run by restore-keycloak.sh -e raspberry
+# restore_action=restore (default): copy the decrypted backup archive (local_archive) to the Pi, unpack it in a folder
+#   only root and keycloak can enter, stop Keycloak, keep the current database as data.before-restore-<stamp>, then
+#   restore_mode=data:   copy the raw H2 data/ of the backup (same Keycloak version and install folder only)
+#   restore_mode=import: kc.sh build and kc.sh import --override true of every realm export (master included)
+#   restore_config=true (always with import): /etc/keycloak and the systemd unit come from the backup too
+#   Start Keycloak and check the issuer over HTTPS. On failure the previous database is put back and Keycloak started.
+#   The unpacked backup is always shredded (it holds secrets).
+# restore_action=cleanup: remove data.before-restore-* and restore folders left by earlier runs.
+# Extra vars from restore-keycloak.sh: local_archive, backup_stamp, backup_version, backup_home, restore_mode, restore_config
+- hosts: identitymanager
+  remote_user: "{{ user }}"
+  become: yes
+  vars:
+    src_dir: "{{ playbook_dir }}"
+    restore_action: restore
+    restore_config: false
+    issuer_realm: windfire
+  vars_files:
+    - "{{ src_dir }}/conf/raspberry-config.yml"
+    - "{{ src_dir }}/conf/keycloak-tls-config.yml"
+    - "{{ src_dir }}/conf/keycloak-backup-config.yml"
+  tasks:
+    #########################################
+    ##### Keycloak installed on the Pi  #####
+    #########################################
+    - name: Fail on an unknown restore_action
+      assert:
+        that: restore_action in ['restore', 'cleanup']
+        fail_msg: "restore_action must be restore or cleanup, not {{ restore_action }}"
+        quiet: true
+    - name: Read Keycloak systemd unit ExecStart
+      command: "systemctl show {{ keycloak_service }} -p ExecStart --value"
+      register: keycloak_exec_start
+      changed_when: false
+      check_mode: false
+    - name: Read Keycloak systemd unit Environment
+      command: "systemctl show {{ keycloak_service }} -p Environment --value"
+      register: keycloak_unit_env
+      changed_when: false
+      check_mode: false
+      no_log: true  # may still hold KEYCLOAK_ADMIN_PASSWORD
+    - name: Set Keycloak facts from systemd unit
+      set_fact:
+        kc_sh: "{{ keycloak_exec_start.stdout | regex_search('path=([^ ;]+)', '\\1') | default([''], true) | first }}"
+    - name: Set Keycloak environment without admin credentials (used by build and import)
+      set_fact:
+        unit_env: "{{ dict(keycloak_unit_env.stdout.split() | reject('match', 'KEYCLOAK_ADMIN') | map('regex_search', '^([^=]+)=(.*)$', '\\1', '\\2') | select | list) }}"
+      no_log: true
+    - name: Fail if kc.sh cannot be found in Keycloak systemd unit
+      assert:
+        that: kc_sh is search('kc\.sh$')
+        fail_msg: "Keycloak is not installed on {{ inventory_hostname }} (no kc.sh in the {{ keycloak_service }} systemd unit ExecStart: {{ keycloak_exec_start.stdout | default('', true) }}), install it with keycloak/deployment/install-keycloak.sh 1"
+        quiet: true
+    - name: Set Keycloak install directory and version
+      set_fact:
+        keycloak_home: "{{ kc_sh | dirname | dirname }}"
+        running_version: "{{ kc_sh | dirname | dirname | basename | regex_search('^keycloak-(\\d+\\.\\d+\\.\\d+)$', '\\1') | default([''], true) | first }}"
+
+    ########################################################
+    ##### Cleanup: leftovers of earlier restores       #####
+    ########################################################
+    - name: Remove the restore leftovers on {{ inventory_hostname }}
+      when: restore_action == 'cleanup'
+      block:
+        - name: Find databases saved before a restore in "{{ keycloak_home }}"
+          find:
+            paths: "{{ keycloak_home }}"
+            patterns: "data.before-restore-*"
+            file_type: directory
+          register: saved_databases
+        - name: Find restore folders left in "{{ remote_backup_dir }}"
+          find:
+            paths: "{{ remote_backup_dir }}"
+            patterns: "restore-*"
+            file_type: directory
+          register: restore_folders
+        - name: Show what is removed
+          debug:
+            msg: "{{ (saved_databases.files + restore_folders.files) | map(attribute='path') | sort | list | default(['nothing to remove'], true) }}"
+        - name: Overwrite and remove the files, then the folders (they hold password hashes and secrets)
+          # Best effort on flash storage (wear levelling may keep old blocks), the folders are removed anyway
+          shell: "find {{ item | quote }} -type f -exec shred -u {} + ; rm -rf {{ item | quote }}"
+          loop: "{{ (saved_databases.files + restore_folders.files) | map(attribute='path') | list }}"
+    - name: End after the cleanup
+      meta: end_play
+      when: restore_action == 'cleanup'
+
+    ###################################
+    ##### Restore: pre-flight     #####
+    ###################################
+    - name: Fail if restore-keycloak.sh did not pass the backup to restore
+      assert:
+        that:
+          - local_archive is defined
+          - backup_stamp is defined and backup_stamp is match('^\d{8}-\d{6}$')
+          - backup_version is defined and backup_version is match('^\d+\.\d+\.\d+$')
+          - backup_home is defined
+          - restore_mode is defined and restore_mode in ['data', 'import']
+        fail_msg: "Run this playbook with keycloak/deployment/restore-keycloak.sh -e raspberry"
+        quiet: true
+    - name: Set restore paths
+      set_fact:
+        restore_dir: "{{ remote_backup_dir }}/restore-{{ backup_stamp }}"
+        backup_root: "{{ remote_backup_dir }}/restore-{{ backup_stamp }}/kc-backup-{{ backup_stamp }}"
+        saved_data: "{{ keycloak_home }}/data.before-restore-{{ backup_stamp }}"
+        config_dir: "{{ keycloak_conf | dirname }}"
+        do_restore_config: "{{ (restore_config | bool) or restore_mode == 'import' }}"
+        keycloak_stopped: false
+        data_saved: false
+        config_restored: false
+    - name: Fail if mode data would restore another version or install folder
+      assert:
+        that:
+          - backup_version == running_version
+          - backup_home == keycloak_home
+        fail_msg: "Mode data needs the same install: the backup is Keycloak {{ backup_version }} ({{ backup_home }}), {{ keycloak_service }} runs {{ running_version | default('unknown', true) }} ({{ keycloak_home }}): use restore-keycloak.sh -m import"
+        quiet: true
+      when: restore_mode == 'data'
+    - name: Fail if the backup is newer than the running Keycloak
+      assert:
+        that: backup_version is version(running_version, '<=')
+        fail_msg: "The backup is Keycloak {{ backup_version }}, newer than {{ running_version }} on {{ inventory_hostname }}: an export cannot be imported into an older version, upgrade first"
+        quiet: true
+      when: restore_mode == 'import'
+    - name: Read the leftovers of an earlier restore of the same backup
+      stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ saved_data }}"
+        - "{{ restore_dir }}"
+      register: leftovers
+    - name: Fail if an earlier restore of the same backup left files behind
+      assert:
+        that: leftovers.results | selectattr('stat.exists') | list | length == 0
+        fail_msg: "{{ leftovers.results | selectattr('stat.exists') | map(attribute='item') | join(', ') }} already exist(s): remove them with restore-keycloak.sh -e raspberry -c first"
+        quiet: true
+    - name: Read the size of the backup archive
+      stat:
+        path: "{{ local_archive }}"
+        get_checksum: no
+      register: local_archive_stat
+      delegate_to: localhost
+      become: no
+    - name: Fail if the backup archive is missing on the Mac
+      assert:
+        that: local_archive_stat.stat.exists
+        fail_msg: "{{ local_archive }} not found on the Mac"
+        quiet: true
+    - name: Read free space in "{{ remote_backup_dir }}" and size of "{{ keycloak_home }}/data"
+      shell: "df -Pk {{ remote_backup_dir }} | awk 'NR==2 {print $4}'; du -sk {{ keycloak_home }}/data 2>/dev/null | cut -f1 || echo 0"
+      register: restore_space
+      changed_when: false
+      check_mode: false
+    - name: Fail if there is not enough free space for archive, unpacked backup and saved database
+      assert:
+        that: (restore_space.stdout_lines[0] | int) >= 3 * (local_archive_stat.stat.size // 1024) + (restore_space.stdout_lines[1] | default(0) | int) + keycloak_backup_extra_space_kb
+        fail_msg: "Not enough free space in {{ remote_backup_dir }}: {{ (restore_space.stdout_lines[0] | int) // 1024 }} MB free, {{ (3 * (local_archive_stat.stat.size // 1024) + (restore_space.stdout_lines[1] | default(0) | int) + keycloak_backup_extra_space_kb) // 1024 }} MB needed"
+        quiet: true
+
+    ######################################################################
+    ##### Copy, unpack, stop, restore, start (rollback on failure)   #####
+    ######################################################################
+    - name: Restore the backup of {{ backup_stamp }} on {{ inventory_hostname }}
+      block:
+        - name: Create "{{ restore_dir }}", only root and {{ keycloak_group }} can enter
+          file:
+            path: "{{ restore_dir }}"
+            state: directory
+            owner: root
+            group: "{{ keycloak_group }}"
+            mode: "0710"
+        - name: Copy the backup archive to "{{ restore_dir }}"
+          copy:
+            src: "{{ local_archive }}"
+            dest: "{{ restore_dir }}/backup.tgz"
+            owner: root
+            group: root
+            mode: "0600"
+        - name: Unpack the backup archive (owners and modes from the archive)
+          command: "tar xzpf {{ restore_dir }}/backup.tgz -C {{ restore_dir }}"
+          args:
+            creates: "{{ backup_root }}/MANIFEST.txt"
+        - name: Overwrite and remove the backup archive
+          command: "shred -u {{ restore_dir }}/backup.tgz"
+        - name: Read the unpacked backup
+          stat:
+            path: "{{ item }}"
+          loop:
+            - "{{ backup_root }}/MANIFEST.txt"
+            - "{{ backup_root }}/export"
+            - "{{ backup_root }}/files{{ backup_home }}/data"
+            - "{{ backup_root }}/files{{ config_dir }}"
+          register: backup_contents
+        - name: Fail if the archive is not the expected Keycloak backup
+          assert:
+            that:
+              - backup_contents.results[0].stat.exists
+              - restore_mode != 'import' or backup_contents.results[1].stat.exists
+              - restore_mode != 'data' or backup_contents.results[2].stat.exists
+              - not (do_restore_config | bool) or backup_contents.results[3].stat.exists
+            fail_msg: "{{ backup_root }} lacks MANIFEST.txt, export/, files{{ backup_home }}/data or files{{ config_dir }} needed by this restore"
+            quiet: true
+        - name: Let {{ keycloak_user }} read the realm export
+          file:
+            path: "{{ item.path }}"
+            owner: "{{ keycloak_user }}"
+            group: "{{ keycloak_group }}"
+            recurse: "{{ item.recurse }}"
+          loop:
+            - { path: "{{ backup_root }}", recurse: false }
+            - { path: "{{ backup_root }}/export", recurse: true }
+          when: restore_mode == 'import'
+
+        - name: Stop Keycloak (the H2 database is locked while it runs)
+          systemd:
+            name: "{{ keycloak_service }}"
+            state: stopped
+        - name: Record that Keycloak is stopped
+          set_fact:
+            keycloak_stopped: true
+        - name: Read the current database "{{ keycloak_home }}/data"
+          stat:
+            path: "{{ keycloak_home }}/data"
+          register: current_data
+        - name: Keep the current database as "{{ saved_data }}"
+          command: "cp -a {{ keycloak_home }}/data {{ saved_data }}"
+          when: current_data.stat.exists
+        - name: Record that the current database is saved
+          set_fact:
+            data_saved: "{{ current_data.stat.exists }}"
+
+        ##### Mode data: raw H2 database #####
+        - name: Restore the raw database (mode data)
+          when: restore_mode == 'data'
+          block:
+            - name: Remove the current "{{ keycloak_home }}/data"
+              file:
+                path: "{{ keycloak_home }}/data"
+                state: absent
+            - name: Copy the raw database of the backup to "{{ keycloak_home }}/data"
+              command: "cp -a {{ backup_root }}/files{{ backup_home }}/data {{ keycloak_home }}/data"
+            - name: Make "{{ keycloak_home }}/data" owned by {{ keycloak_user }}
+              command: "chown -R {{ keycloak_user }}:{{ keycloak_group }} {{ keycloak_home }}/data"
+
+        ##### Configuration and systemd unit #####
+        - name: Restore "{{ config_dir }}" and the systemd unit
+          when: do_restore_config | bool
+          block:
+            - name: Restore "{{ config_dir }}" (keycloak.conf, keycloak.env, tls/, vault/; owners and modes from the archive)
+              command: "cp -a {{ backup_root }}/files{{ config_dir }}/. {{ config_dir }}/"
+            - name: Record that the configuration is restored
+              set_fact:
+                config_restored: true
+            - name: Restore the systemd unit, and its drop-in for the same version only (the drop-in sets ExecStart)
+              shell: |
+                set -e
+                unit=/etc/systemd/system/{{ keycloak_service }}.service
+                src={{ backup_root }}/files$unit
+                [ ! -f "$src" ] || cp -a "$src" "$unit"
+                {% if restore_mode == 'data' %}
+                [ ! -d "$src.d" ] || cp -a "$src.d" /etc/systemd/system/
+                {% endif %}
+              args:
+                executable: /bin/bash
+            - name: Reload systemd
+              systemd:
+                daemon_reload: yes
+            - name: Read Keycloak systemd unit Environment again
+              command: "systemctl show {{ keycloak_service }} -p Environment --value"
+              register: keycloak_unit_env_restored
+              changed_when: false
+              no_log: true
+            - name: Set Keycloak environment from the restored unit
+              set_fact:
+                unit_env: "{{ dict(keycloak_unit_env_restored.stdout.split() | reject('match', 'KEYCLOAK_ADMIN') | map('regex_search', '^([^=]+)=(.*)$', '\\1', '\\2') | select | list) }}"
+              no_log: true
+
+        ##### Build (keycloak.conf holds build options) and import #####
+        - name: Build Keycloak {{ running_version }} with the restored keycloak.conf
+          # lib/quarkus is read-only in the sandboxed unit: build before the start
+          command: "{{ kc_sh }} --config-file={{ keycloak_conf }} build"
+          become_user: "{{ keycloak_user }}"
+          environment: "{{ unit_env }}"
+          when: config_restored | bool
+        - name: Import every realm of the backup (mode import, master included)
+          # --config-file is a kc.sh option, not an import option: it must come before the command
+          command: "{{ kc_sh }} --config-file={{ keycloak_conf }} import --dir {{ backup_root }}/export --override true"
+          become_user: "{{ keycloak_user }}"
+          environment: "{{ unit_env }}"
+          when: restore_mode == 'import'
+
+        ##### Start and check #####
+        - name: Start Keycloak
+          systemd:
+            name: "{{ keycloak_service }}"
+            state: started
+        - name: Wait for Keycloak over HTTPS (a first start after an import may migrate the database)
+          uri:
+            url: "https://{{ inventory_hostname }}:{{ keycloak_https_port }}/realms/master/"
+            ca_path: "{{ local_root_ca_cert }}"
+            validate_certs: yes
+          register: keycloak_https_check
+          until: keycloak_https_check.status == 200
+          retries: 60
+          delay: 10
+          delegate_to: localhost
+          become: no
+        - name: Read {{ issuer_realm }} realm issuer
+          uri:
+            url: "https://{{ inventory_hostname }}:{{ keycloak_https_port }}/realms/{{ issuer_realm }}/.well-known/openid-configuration"
+            ca_path: "{{ local_root_ca_cert }}"
+            validate_certs: yes
+            return_content: yes
+          register: issuer_check
+          delegate_to: localhost
+          become: no
+        - name: Fail if {{ issuer_realm }} realm issuer is not the expected one (tokens of the applications would be rejected)
+          assert:
+            that: issuer_check.json.issuer == 'https://' ~ inventory_hostname ~ ':' ~ keycloak_https_port ~ '/realms/' ~ issuer_realm
+            fail_msg: "Issuer is {{ issuer_check.json.issuer }}, expected https://{{ inventory_hostname }}:{{ keycloak_https_port }}/realms/{{ issuer_realm }}"
+            quiet: true
+      rescue:
+        - name: Stop Keycloak before the rollback
+          systemd:
+            name: "{{ keycloak_service }}"
+            state: stopped
+          failed_when: false
+          when: keycloak_stopped | bool
+        - name: Put the previous database back
+          shell: "rm -rf {{ keycloak_home }}/data && mv {{ saved_data }} {{ keycloak_home }}/data"
+          when: data_saved | bool
+        - name: Start Keycloak with the previous database
+          systemd:
+            name: "{{ keycloak_service }}"
+            state: started
+          register: rollback_start
+          failed_when: false
+          when: keycloak_stopped | bool
+        - name: Fail and report the rollback
+          fail:
+            msg:
+              - "Restore failed at task: {{ ansible_failed_task.name | default('unknown') }}"
+              - "{{ (data_saved | bool) | ternary('The previous database was put back in ' ~ keycloak_home ~ '/data', 'The database was not changed') }}"
+              - "{{ (config_restored | bool) | ternary('WARNING: ' ~ config_dir ~ ' and the systemd unit were already restored from the backup, they are NOT rolled back', 'The configuration was not changed') }}"
+              - "{{ (keycloak_stopped | bool) | ternary('Keycloak start after the rollback: ' ~ ((rollback_start.failed | default(false)) | ternary('FAILED, check journalctl -u ' ~ keycloak_service, 'ok')), 'Keycloak was not stopped') }}"
+      always:
+        - name: Overwrite and remove the unpacked backup "{{ restore_dir }}" (it holds secrets)
+          # Best effort on flash storage (wear levelling may keep old blocks), the folder is removed anyway
+          shell: "[ ! -d {{ restore_dir }} ] || find {{ restore_dir }} -type f -exec shred -u {} + ; rm -rf {{ restore_dir }}"
+
+    #####################
+    ##### Summary   #####
+    #####################
+    - name: Show restore summary
+      debug:
+        msg:
+          - "Backup of {{ backup_stamp }} (Keycloak {{ backup_version }}) restored on {{ inventory_hostname }}, mode {{ restore_mode }}"
+          - "Configuration: {{ (config_restored | bool) | ternary(config_dir ~ ' and the systemd unit restored from the backup', 'kept as it was') }}"
+          - "Issuer: {{ issuer_check.json.issuer }}"
+          - "Previous database kept in {{ saved_data }}: remove it once the restore is validated (restore-keycloak.sh -e raspberry -c)"

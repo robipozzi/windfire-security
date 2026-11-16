@@ -84,7 +84,7 @@ The procedures under **[keycloak/deployment/](keycloak/deployment/)** are:
 | [backup-keycloak.sh](keycloak/deployment/backup-keycloak.sh) `[-v <version>] [-y]` | Backs up the Keycloak on raspberry01 to the Mac, encrypted with sops |
 | [schedule-keycloak-backup.sh](keycloak/deployment/schedule-keycloak-backup.sh) `[--remove] [-y]` | Installs (or removes) the weekly Keycloak backup on raspberry01, keeping the last 4 |
 | [fetch-keycloak-backups.sh](keycloak/deployment/fetch-keycloak-backups.sh) `[-y]` | Copies the weekly backups to the Mac, encrypts them with sops and removes them from raspberry01 |
-| [restore-test.sh](keycloak/deployment/restore-test.sh) `[-f <backup>] [-m import\|data] [-p <port>] [-k] [-c]` | Restores a backup into a scratch Keycloak on the Mac and checks realms, clients and users |
+| [restore-keycloak.sh](keycloak/deployment/restore-keycloak.sh) `[-e localhost\|raspberry] [-f <backup>] [-m import\|data] [-p <port>] [-k] [-c] [-y]` | Restores a backup into a scratch Keycloak on the Mac (test) or into raspberry01, and checks realms, clients and users |
 | [deploy-keycloak-tls.sh](keycloak/deployment/deploy-keycloak-tls.sh) | Deploys a new raspberry01 server certificate |
 | [uninstall-keycloak.sh](keycloak/deployment/uninstall-keycloak.sh) `[-y]` | Removes Keycloak from raspberry01 |
 
@@ -252,15 +252,15 @@ Under `files/`, every path keeps its absolute path, owner and mode from raspberr
 > A decrypted backup holds the TLS key, client secrets, vault secrets and password hashes in plain text. Decrypt it only into a 0700 folder and delete it when done.
 
 ##### Test the newest backup on the Mac
-**[restore-test.sh](keycloak/deployment/restore-test.sh)** proves that a backup can be restored. It does not contact raspberry01. It never writes to the dev Keycloak in `KEYCLOAK_HOME` (`~/software/keycloak-26.8.1`) or to `~/opt/keycloak/backup`:
+**[restore-keycloak.sh](keycloak/deployment/restore-keycloak.sh) `-e localhost`** proves that a backup can be restored. Without `-e`, the script asks where to restore (`1. Raspberry`, `2. localhost`). On localhost it does not contact raspberry01. It never writes to the dev Keycloak in `KEYCLOAK_HOME` (`~/software/keycloak-26.8.1`) or to `~/opt/keycloak/backup`:
 
 ```bash
 cd keycloak/deployment
-./restore-test.sh              # newest backup, import of the realm export
-./restore-test.sh -m data      # newest backup, copy of the raw H2 data/ instead (same version only)
-./restore-test.sh -k           # keep the scratch Keycloak running to look around in the Admin Console
-./restore-test.sh -c           # then stop it and remove its folder
-./restore-test.sh -f ~/opt/keycloak/backup/keycloak-26.8.1-backup-<stamp>.tgz.sops.json   # a given backup
+./restore-keycloak.sh -e localhost         # newest backup, import of the realm export
+./restore-keycloak.sh -e localhost -m data # newest backup, copy of the raw H2 data/ instead (same version only)
+./restore-keycloak.sh -e localhost -k      # keep the scratch Keycloak running to look around in the Admin Console
+./restore-keycloak.sh -e localhost -c      # then stop it and remove its folder
+./restore-keycloak.sh -e localhost -f ~/opt/keycloak/backup/keycloak-26.8.1-backup-<stamp>.tgz.sops.json   # a given backup
 ```
 
 The script:
@@ -303,7 +303,28 @@ keycloak-26.8.1/bin/kc.sh start-dev --http-port=18080 --http-management-port=190
 The restored realms keep their settings. If a realm has a *Frontend URL* set to `https://raspberry01:8443`, its login pages redirect to raspberry01 instead of the scratch Keycloak.
 
 ##### Restore on raspberry01
-Run this only to really restore raspberry01, for example after a lost SD card or a broken database. Test the backup with `restore-test.sh` first. sudo on the Pi asks for the `pi` password, so connect with `ssh -t`. In the commands, `<stamp>` is the date in the backup name, and `H=/opt/keycloak/keycloak-<version>` is the install.
+Run this only to really restore raspberry01, for example after a lost SD card or a broken database. **[restore-keycloak.sh](keycloak/deployment/restore-keycloak.sh) `-e raspberry`** runs the whole procedure through [keycloak-restore.yaml](keycloak/deployment/raspberry/keycloak-restore.yaml). It asks for the `pi` sudo password:
+
+```bash
+cd keycloak/deployment
+./restore-keycloak.sh -e raspberry                 # newest backup; data if it is the version running on the Pi, otherwise import
+./restore-keycloak.sh -e raspberry -m import       # force the realm import
+./restore-keycloak.sh -e raspberry -f ~/opt/keycloak/backup/keycloak-26.8.1-backup-<stamp>.tgz.sops.json
+./restore-keycloak.sh -e raspberry -c              # once validated: remove the database saved before the restore
+```
+
+The script:
+1. Picks the backup as on localhost, then asks *Test this backup on the Mac first? [Y/n]*. On yes it runs `restore-keycloak.sh -e localhost` on the same file, and stops without touching the Pi if that check fails.
+2. Decrypts the backup into `~/opt/keycloak/restore-raspberry` (mode 0700, removed on exit) and reads `MANIFEST.txt`.
+   - **data** (raw H2 `data/`, everything exactly as it was): needs the backup version to be `keycloak_version` in `raspberry/conf/raspberry-config.yml`, and the same install folder on the Pi. The script asks whether to restore `/etc/keycloak` and the systemd unit too (default no).
+   - **import** (`kc.sh import --override true` of every realm, `master` included, so the admin users and passwords of the backup come back): for a new installation or a newer version. Install Keycloak first with `install-keycloak.sh 1`. `/etc/keycloak` and `keycloak.service` are always restored, and Keycloak is rebuilt, because `keycloak.conf` holds build options. The drop-in `keycloak.service.d` is not restored, because it sets the old ExecStart.
+3. Shows a summary and asks *Restore raspberry01 now?* (skip it with `-y`).
+4. The playbook copies the archive to `/opt/keycloak/restore-<stamp>` (`root:keycloak` 0710), unpacks it and shreds the archive. It then stops Keycloak, keeps the current database as `<install>/data.before-restore-<stamp>`, restores, rebuilds when the configuration was restored, starts Keycloak and checks that the `windfire` issuer is still `https://raspberry01:8443/realms/windfire`. **If any step fails, it puts the previous database back and starts Keycloak again.** A restored `/etc/keycloak` is not rolled back: the playbook says so. The unpacked backup is always shredded.
+5. Asks for a `master` admin user and password **of the backup** (hidden input, environment only), and runs the same checks as on localhost against https://raspberry01:8443. Leave the password empty to skip them.
+6. Asks whether the restore is validated. On yes, it removes `data.before-restore-<stamp>`. Otherwise run `-c` later. Log in to an application (for example windfire-calendar) before you answer.
+
+###### Manual procedure (fallback)
+The same steps by hand, if the script cannot run. The Pi only accepts the `~/.ssh/ansible_rsa` key, so pass `-i ~/.ssh/ansible_rsa` to `scp` and `ssh`. sudo on the Pi asks for the `pi` password, so connect with `ssh -t`. In the commands, `<stamp>` is the date in the backup name, and `H=/opt/keycloak/keycloak-<version>` is the install.
 
 **1. Copy the backup to the Pi** (on the Mac):
 
@@ -311,8 +332,8 @@ Run this only to really restore raspberry01, for example after a lost SD card or
 B=keycloak-26.8.1-backup-<stamp>.tgz
 T=$(mktemp -d)                      # mode 0700
 ~/dev/windfire-security/sops/sops-crypt.sh -d -f ~/opt/keycloak/backup/$B.sops.json -o $T/$B
-scp $T/$B pi@raspberry01: && rm -rf $T
-ssh -t pi@raspberry01
+scp -i ~/.ssh/ansible_rsa $T/$B pi@raspberry01: && rm -rf $T
+ssh -t -i ~/.ssh/ansible_rsa pi@raspberry01
 ```
 
 **2. Unpack it into a folder only root and `keycloak` can enter** (on the Pi):
