@@ -372,10 +372,16 @@ def test_unknown_host_is_rejected(client):
 # CORS
 # ---------------------------------------------------------------------------
 def test_cors_does_not_allow_foreign_origins(client):
-    # No browser client calls the server directly (the UIs go through their own backends), so
-    # no origin gets CORS access. allow_origins is ALLOWED_HOSTS (bare host names), which never
-    # matches an Origin: if a browser client is ever added, this test must change with the fix.
+    # No browser client calls the server directly (it is server-to-server only), so no
+    # CORSMiddleware is installed and no origin gets CORS access. If a browser client is ever
+    # added, this test must change together with the middleware.
     for origin in ("https://evil.com", "https://localhost:9443"):
         response = client.options("/v1/security/auth", headers={
             "Origin": origin, "Access-Control-Request-Method": "POST"})
         assert response.headers.get("access-control-allow-origin") is None, origin
+
+
+def test_cors_preflight_from_evil_example_gets_no_allow_origin(client):
+    response = client.options("/v1/security/auth", headers={
+        "Origin": "https://evil.example", "Access-Control-Request-Method": "POST"})
+    assert response.headers.get("access-control-allow-origin") is None
