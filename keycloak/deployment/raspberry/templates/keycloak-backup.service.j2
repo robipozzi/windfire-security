@@ -1,0 +1,21 @@
+# Managed by keycloak-backup-schedule.yaml: weekly Keycloak backup to {{ scheduled_backup_dir }}, started by keycloak-backup.timer
+# Run it now with: sudo systemctl start keycloak-backup.service (logs: journalctl -u keycloak-backup)
+[Unit]
+Description=Keycloak backup (export, data, configuration) to {{ scheduled_backup_dir }}
+After=network-online.target {{ keycloak_service }}.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/keycloak-backup
+# Stop, export, copy, start (up to 5 minutes for HTTPS) and archive
+TimeoutStartSec=900
+Nice=10
+IOSchedulingClass=idle
+# Runs as root: it stops and starts {{ keycloak_service }}.service, runs the export as {{ keycloak_user }} and reads /etc/keycloak.
+# ProtectSystem=full (/usr, /boot, /etc read-only) rather than strict: kc.sh export writes the install's data/
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+UMask=0077

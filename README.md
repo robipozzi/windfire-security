@@ -82,6 +82,8 @@ The procedures under **[keycloak/deployment/](keycloak/deployment/)** are:
 | [install-keycloak.sh](keycloak/deployment/install-keycloak.sh) `[1\|2] [--side-by-side]` | Fresh install on 1. Raspberry or 2. localhost |
 | [upgrade-keycloak.sh](keycloak/deployment/upgrade-keycloak.sh) | Upgrades the Keycloak installed on raspberry01 |
 | [backup-keycloak.sh](keycloak/deployment/backup-keycloak.sh) `[-v <version>] [-y]` | Backs up the Keycloak on raspberry01 to the Mac, encrypted with sops |
+| [schedule-keycloak-backup.sh](keycloak/deployment/schedule-keycloak-backup.sh) `[--remove] [-y]` | Installs (or removes) the weekly Keycloak backup on raspberry01, keeping the last 4 |
+| [fetch-keycloak-backups.sh](keycloak/deployment/fetch-keycloak-backups.sh) `[-y]` | Copies the weekly backups to the Mac, encrypts them with sops and removes them from raspberry01 |
 | [deploy-keycloak-tls.sh](keycloak/deployment/deploy-keycloak-tls.sh) | Deploys a new raspberry01 server certificate |
 | [uninstall-keycloak.sh](keycloak/deployment/uninstall-keycloak.sh) `[-y]` | Removes Keycloak from raspberry01 |
 
@@ -172,6 +174,58 @@ cd keycloak/deployment
 Finally the script encrypts the archive with **[sops-crypt.sh](sops/sops-crypt.sh)** `-e -r -y` to `<archive>.sops.json`. The plain archive is deleted only after a verified round trip. Decrypt it with `sops/sops-crypt.sh -d -f <archive>.sops.json`.
 
 **Restore** on a new installation: install Keycloak with `install-keycloak.sh 1`, stop it, and restore `files/etc/keycloak` and the unit files. Then either import the export as the `keycloak` user with `kc.sh --config-file=/etc/keycloak/keycloak.conf import --dir export/ --override true` (works on the same or a newer version), or, with the same version only, copy `files/opt/keycloak/keycloak-<version>/data` over the new `data/`. Start Keycloak again.
+
+#### Weekly scheduled backup on raspberry01
+**[schedule-keycloak-backup.sh](keycloak/deployment/schedule-keycloak-backup.sh)** installs a systemd timer on raspberry01. Every week the timer backs up Keycloak on the Pi itself, with no Mac and no sudo password needed. It asks for confirmation (skip it with `-y`) and the pi sudo password, then runs **[keycloak-backup-schedule.yaml](keycloak/deployment/raspberry/keycloak-backup-schedule.yaml)**:
+
+```bash
+cd keycloak/deployment
+./schedule-keycloak-backup.sh            # install or update
+./schedule-keycloak-backup.sh --remove   # remove timer, service and script, keep the archives
+```
+
+The playbook installs `/usr/local/sbin/keycloak-backup`, `keycloak-backup.service` and `keycloak-backup.timer` from the [templates](keycloak/deployment/raspberry/templates). The settings are in **[keycloak-backup-config.yml](keycloak/deployment/raspberry/conf/keycloak-backup-config.yml)**:
+- `scheduled_backup_on_calendar`: *Sun 03:30*, with `Persistent=true` (a run missed while the Pi was off runs at the next boot) and up to 10 minutes of random delay;
+- `scheduled_backup_dir`: `/var/backups/keycloak`, owned by root with group `keycloak` and mode 0710;
+- `scheduled_backup_keep`: *4*.
+
+Each run has the same content as [backup-keycloak.sh](#back-up-keycloak-from-raspberry01) (export, `data/`, `conf/`, `providers/`, `themes/`, `/etc/keycloak`, unit files, `MANIFEST.txt`):
+1. It reads the running install from the unit, so it keeps working after an upgrade.
+2. It stops Keycloak, exports and copies into `kc-backup-<timestamp>`, then starts Keycloak again and checks it over HTTPS (the start also runs on any failure).
+3. It writes `keycloak-<version>-backup-<timestamp>.tgz` (root, 0600).
+4. Only after a fully successful run does it remove the archives beyond the newest 4.
+
+A failed run keeps its staging folder, and the next run warns about it. A lock keeps two runs from overlapping.
+
+> [!WARNING]
+> The archives hold secrets **in plain text** on the Pi: the TLS key, client secrets and password hashes. Only root can read them. `uninstall-keycloak.sh` removes the timer but keeps `/var/backups/keycloak`.
+
+Useful commands on raspberry01:
+
+```bash
+systemctl list-timers keycloak-backup.timer   # next run
+sudo systemctl start keycloak-backup.service  # run now (Keycloak stops for 1-2 minutes)
+journalctl -u keycloak-backup                 # logs
+sudo ls -l /var/backups/keycloak              # archives
+```
+
+To copy the weekly backups to the Mac, run **[fetch-keycloak-backups.sh](keycloak/deployment/fetch-keycloak-backups.sh)** from the Mac (`mac_ip`). It asks for confirmation (skip it with `-y`) and for the pi sudo password, then runs **[keycloak-backup-fetch.yaml](keycloak/deployment/raspberry/keycloak-backup-fetch.yaml)**:
+
+```bash
+cd keycloak/deployment
+./fetch-keycloak-backups.sh
+```
+
+The playbook handles every `keycloak-*-backup-*.tgz` in `/var/backups/keycloak`, one at a time. In-progress `.part` files are ignored.
+1. It fetches the archive to the same folder as `backup-keycloak.sh` (`~/opt/keycloak/backup`, file 0600), under the same name.
+2. It compares the sha256 checksums of both copies.
+3. Only once they match does it remove the archive from raspberry01 (`shred -u`).
+
+An archive whose `.sops.json` is already on the Mac is skipped and kept on the Pi. If something fails, the current archive stays on the Pi.
+
+The script then encrypts each archive the playbook copied, using **[sops-crypt.sh](sops/sops-crypt.sh)** `-e -r -y` to `<archive>.sops.json`. It does this even when the playbook failed partway through. The plain archive is deleted only after a verified round trip.
+
+Restore works the same way as for the manual backups (see `MANIFEST.txt` in the archive).
 
 #### Secure and run Keycloak server with TLS self signed certificate
 Keycloak can be configured to run with TLS enabled, loading the required certificate infrastructure using files in PEM format or from a Java Keystore. When both alternatives are configured, the PEM files takes precedence over the Java Keystores.

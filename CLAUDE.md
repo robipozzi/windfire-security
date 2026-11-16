@@ -51,6 +51,8 @@ All entry points are interactive shell scripts that take the menu choice as an o
 - `keycloak/deployment/install-keycloak.sh [1|2] [--side-by-side]` does a fresh install: 1 on raspberry01 (`raspberry/keycloak-install.yaml`), 2 on localhost (`localhost/keycloak-install.yaml`, no sudo, own `localhost/ansible.cfg`).
 - `upgrade-keycloak.sh` upgrades raspberry01 only (`raspberry/keycloak-upgrade.yaml`).
 - `backup-keycloak.sh [-v <version>] [-y]` backs up raspberry01 to the Mac (`raspberry/keycloak-backup.yaml`, settings in `raspberry/conf/keycloak-backup-config.yml`).
+- `schedule-keycloak-backup.sh [--remove] [-y]` installs or removes the weekly backup timer on raspberry01 (`raspberry/keycloak-backup-schedule.yaml`, `-e keycloak_backup_schedule_state=present|absent`).
+- `fetch-keycloak-backups.sh [-y]` copies the weekly backups from raspberry01 to `~/opt/keycloak/backup` (`raspberry/keycloak-backup-fetch.yaml`), sops-encrypts them and removes them from the Pi.
 - `uninstall-keycloak.sh [-y]` removes Keycloak from raspberry01.
 - `deploy-keycloak-tls.sh` deploys a new raspberry01 certificate.
 
@@ -98,6 +100,23 @@ The backup playbook:
 - writes the local archive path to `~/opt/keycloak/backup/.last-backup`, which `backup-keycloak.sh` reads to run `sops/sops-crypt.sh -e -f <archive> -r -y` (the plain archive is deleted only after a verified round trip).
 
 The Mac's `local_backup_dir` is set in both `keycloak-backup-config.yml` and `backup-keycloak.sh` (passed with `-e`).
+
+The scheduled backup (`keycloak-backup.timer`, `scheduled_backup_*` in `keycloak-backup-config.yml`, Sun 03:30, keep 4) runs on the Pi without the Mac. `templates/keycloak-backup.sh.j2` (installed as `/usr/local/sbin/keycloak-backup`) is a bash port of `keycloak-backup.yaml`, so keep the two in sync: same paths, the same export command and the same `MANIFEST.txt`. Details:
+- The script body is wrapped in `{% raw %}`: bash `${#x}` would open a Jinja comment.
+- It reads `kc.sh`, the version, the environment without `KEYCLOAK_ADMIN*` and the unit files from `systemctl show`, so it follows the upgrade drop-in.
+- It takes `flock -n` on `<dir>/.lock`.
+- An EXIT trap restarts Keycloak if the script stopped it, then waits for `https://localhost:8443/realms/master/`. The archive is written after the restart.
+- Rotation (`ls -1t | tail -n +5`) runs only after a successful run. A restart failure keeps the new archive but skips rotation and fails the unit.
+- `/var/backups/keycloak` is `root:keycloak 0710`: the `keycloak` user writes the export into its own 0700 staging folder, but it can't list or read the archives (root 0600).
+- The archives are plain text. The folder is outside `/opt/keycloak`, so `keycloak-uninstall.yaml` removes the timer, the service and the script but keeps the archives.
+- The service is not `ProtectSystem=strict`: it must stop/start `keycloak` and the export writes the install's `data/`.
+
+`keycloak-backup-fetch.yaml` (run by `fetch-keycloak-backups.sh`) does the same `mac_ip` check as the backup playbook. It loops `tasks/fetch-scheduled-backup.yaml` over the archives in sorted order, and each archive goes through these steps:
+1. It is skipped if `<name>.sops.json` already exists on the Mac.
+2. `fetch` with `flat` and `validate_checksum`, then `chmod 0600` and a sha256 comparison.
+3. The archive is appended to `~/opt/keycloak/backup/.last-fetch` **before** the `shred -u` on the Pi, so nothing removed from the Pi is left unrecorded.
+
+A `rescue` stops at the first failure. The wrapper encrypts every entry in `.last-fetch` with `sops-crypt.sh -e -r -y` even when the playbook failed.
 
 ## Certificate / TLS setup
 

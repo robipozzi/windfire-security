@@ -1,0 +1,67 @@
+--- # Ansible Playbook to copy the weekly Keycloak backups from raspberry01 to the Mac, run by fetch-keycloak-backups.sh
+# Fetches every keycloak-*-backup-*.tgz in scheduled_backup_dir (written by keycloak-backup.timer) to local_backup_dir,
+# verifies its sha256, then removes it from raspberry01 (shred -u). The archives hold secrets:
+# fetch-keycloak-backups.sh encrypts each one listed in local_backup_dir/.last-fetch with sops.
+- hosts: identitymanager
+  remote_user: "{{ user }}"
+  become: yes
+  vars:
+    src_dir: "{{ playbook_dir }}"
+    fetched_archives: []
+    skipped_archives: []
+  vars_files:
+    - "{{ src_dir }}/conf/raspberry-config.yml"
+    - "{{ src_dir }}/conf/keycloak-tls-config.yml"
+    - "{{ src_dir }}/conf/keycloak-backup-config.yml"
+  tasks:
+    #########################
+    ##### Pre-flight    #####
+    #########################
+    - name: Read the address of the Ansible controller
+      command: printenv SSH_CLIENT
+      register: ssh_client
+      changed_when: false
+      check_mode: false
+      failed_when: false
+      become: no
+    - name: Fail if the backups would not be fetched to the Mac ({{ mac_ip }})
+      assert:
+        that: (ssh_client.stdout.split() | first | default('')) == mac_ip
+        fail_msg: "The SSH connection comes from {{ ssh_client.stdout.split() | first | default('an unknown address') }}, not from the Mac {{ mac_ip }}: run fetch-keycloak-backups.sh from the Mac, or set mac_ip in conf/keycloak-backup-config.yml"
+        quiet: true
+    - name: Ensure "{{ local_backup_dir }}" local directory exists, readable by you only
+      file:
+        path: "{{ local_backup_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      become: no
+    - name: Find the weekly backups in "{{ scheduled_backup_dir }}"
+      # keycloak-backup.sh writes <archive>.part and renames it when complete: .part files never match
+      find:
+        paths: "{{ scheduled_backup_dir }}"
+        patterns: "keycloak-*-backup-*.tgz"
+      register: scheduled_backups
+    - name: Nothing to fetch
+      debug:
+        msg: "No backup in {{ scheduled_backup_dir }} on {{ inventory_hostname }}, nothing to fetch"
+      when: scheduled_backups.matched == 0
+    - name: End when there is nothing to fetch
+      meta: end_play
+      when: scheduled_backups.matched == 0
+    ##############################################################
+    ##### Fetch, verify and remove from the Pi, one at a time #####
+    ##############################################################
+    - name: Fetch each backup to the Mac, remove it from {{ inventory_hostname }} once the copy is verified
+      include_tasks: "{{ src_dir }}/tasks/fetch-scheduled-backup.yaml"
+      loop: "{{ scheduled_backups.files | map(attribute='path') | sort | list }}"
+      loop_control:
+        loop_var: remote_archive
+    #####################
+    ##### Summary   #####
+    #####################
+    - name: Show fetch summary
+      debug:
+        msg:
+          - "Fetched to {{ local_backup_dir }} and removed from {{ inventory_hostname }}: {{ fetched_archives | map('basename') | list }}"
+          - "Skipped, kept on {{ inventory_hostname }}: {{ skipped_archives | map('basename') | list }}"
