@@ -1,0 +1,197 @@
+#!/bin/bash
+# Managed by keycloak-backup-schedule.yaml: weekly Keycloak backup, run as root by keycloak-backup.service (keycloak-backup.timer)
+# Same content as keycloak-backup.yaml (run from the Mac by backup-keycloak.sh): stop Keycloak, export every realm
+# (users included), copy data/, conf/, providers/, themes/, /etc/keycloak and the systemd unit files, write MANIFEST.txt,
+# start Keycloak again, then archive to {{ scheduled_backup_dir }}/keycloak-<version>-backup-<stamp>.tgz (mode 0600).
+# Keeps the newest {{ scheduled_backup_keep }} archives; older ones are removed only after a successful run.
+# The archives hold secrets in plain text (TLS key, client secrets, password hashes): root 0600, in a root:keycloak 0710 folder.
+set -euo pipefail
+umask 077
+
+BACKUP_DIR="{{ scheduled_backup_dir }}"
+KEEP={{ scheduled_backup_keep | int }}
+KEYCLOAK_SERVICE="{{ keycloak_service }}"
+KEYCLOAK_USER="{{ keycloak_user }}"
+KEYCLOAK_CONF="{{ keycloak_conf }}"
+KEYCLOAK_HTTPS_PORT={{ keycloak_https_port }}
+EXTRA_SPACE_KB={{ keycloak_backup_extra_space_kb | int }}
+HOST_NAME="{{ inventory_hostname }}"
+{% raw %}
+STAMP=$(date +%Y%m%d-%H%M%S)
+STAGING_DIR=
+KEYCLOAK_STOPPED=false
+RESTART_FAILED=false
+
+log() { echo "$*"; }
+fail() { echo "ERROR: $*" >&2; exit 1; }
+
+# Start Keycloak again if this run stopped it, and wait for HTTPS (called once, from the main flow or the EXIT trap)
+restart_keycloak()
+{
+    [[ "$KEYCLOAK_STOPPED" == true ]] || return 0
+    KEYCLOAK_STOPPED=false
+    log "Starting ${KEYCLOAK_SERVICE} again"
+    if ! systemctl start "$KEYCLOAK_SERVICE"; then
+        echo "ERROR: systemctl start ${KEYCLOAK_SERVICE} failed" >&2
+        RESTART_FAILED=true
+        return 1
+    fi
+    local i code
+    for i in $(seq 1 30); do
+        code=$(curl -sk -o /dev/null -w '%{http_code}' "https://localhost:${KEYCLOAK_HTTPS_PORT}/realms/master/" || true)
+        if [[ "$code" == 200 ]]; then
+            log "${KEYCLOAK_SERVICE} answers over HTTPS"
+            return 0
+        fi
+        sleep 10
+    done
+    echo "ERROR: ${KEYCLOAK_SERVICE} does not answer on https://localhost:${KEYCLOAK_HTTPS_PORT}/realms/master/ (last HTTP code ${code:-none})" >&2
+    RESTART_FAILED=true
+    return 1
+}
+
+on_exit()
+{
+    local rc=$?
+    restart_keycloak || rc=1
+    if [[ $rc -ne 0 && -n "$STAGING_DIR" && -d "$STAGING_DIR" ]]; then
+        echo "ERROR: backup failed, ${STAGING_DIR} is kept (it holds secrets: remove it by hand once you no longer need it)" >&2
+    fi
+    exit $rc
+}
+trap on_exit EXIT
+
+# One run at a time (the timer and a manual systemctl start)
+[[ -d "$BACKUP_DIR" ]] || fail "${BACKUP_DIR} does not exist: run schedule-keycloak-backup.sh from the Mac"
+exec 9>"${BACKUP_DIR}/.lock"
+flock -n 9 || fail "another keycloak-backup run holds ${BACKUP_DIR}/.lock"
+
+#################################################
+##### Pre-flight checks on running Keycloak #####
+#################################################
+EXEC_START=$(systemctl show "$KEYCLOAK_SERVICE" -p ExecStart --value)
+KC_SH=$(sed -n 's/.*path=\([^ ;]*\).*/\1/p' <<<"$EXEC_START" | head -n 1)
+[[ "$KC_SH" == */bin/kc.sh && -x "$KC_SH" ]] || fail "no kc.sh in the ${KEYCLOAK_SERVICE} systemd unit ExecStart (${EXEC_START:-empty}): is Keycloak installed?"
+EXEC_ARGV=$(sed -n 's/.*argv\[\]=\(.*\) ; ignore_errors=.*/\1/p' <<<"$EXEC_START" | head -n 1)
+KEYCLOAK_HOME=$(dirname "$(dirname "$KC_SH")")
+KEYCLOAK_VERSION=$(basename "$KEYCLOAK_HOME" | sed -n 's/^keycloak-\([0-9]*\.[0-9]*\.[0-9]*\)$/\1/p')
+[[ -n "$KEYCLOAK_VERSION" ]] || fail "cannot read the Keycloak version from ${KEYCLOAK_HOME} (expected keycloak-<x.y.z>)"
+
+# Unit environment without admin credentials, used by the export
+UNIT_ENV=()
+for kv in $(systemctl show "$KEYCLOAK_SERVICE" -p Environment --value); do
+    if [[ "$kv" == *=* && "$kv" != KEYCLOAK_ADMIN* ]]; then UNIT_ENV+=("$kv"); fi
+done
+JAVA_BIN=java
+for kv in "${UNIT_ENV[@]}"; do
+    if [[ "$kv" == JAVA_HOME=* ]]; then JAVA_BIN="${kv#JAVA_HOME=}/bin/java"; fi
+done
+
+UNIT_FILES=()
+for p in $(systemctl show "$KEYCLOAK_SERVICE" -p FragmentPath --value) $(systemctl show "$KEYCLOAK_SERVICE" -p DropInPaths --value); do
+    if [[ -n "$p" ]]; then UNIT_FILES+=("$p"); fi
+done
+BACKUP_PATHS=("${KEYCLOAK_HOME}/conf" "${KEYCLOAK_HOME}/data" "${KEYCLOAK_HOME}/providers" "${KEYCLOAK_HOME}/themes" "$(dirname "$KEYCLOAK_CONF")" "${UNIT_FILES[@]}")
+
+FREE_KB=$(df -Pk "$BACKUP_DIR" | awk 'NR==2 {print $4}')
+USED_KB=$(du -sck "${BACKUP_PATHS[@]}" 2>/dev/null | tail -n 1 | cut -f1)
+NEEDED_KB=$(( 3 * USED_KB + EXTRA_SPACE_KB ))
+(( FREE_KB >= NEEDED_KB )) || fail "not enough free space in ${BACKUP_DIR}: $(( FREE_KB / 1024 )) MB free, $(( NEEDED_KB / 1024 )) MB needed"
+
+LEFTOVERS=$(find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -name 'kc-backup-*' | sort)
+if [[ -n "$LEFTOVERS" ]]; then
+    echo "WARNING: staging folders left by failed runs (they hold secrets, never removed automatically):" >&2
+    echo "$LEFTOVERS" >&2
+fi
+
+JAVA_VERSION=$("$JAVA_BIN" -version 2>&1 | sed -n 's/.*version "\([0-9][^"]*\)".*/\1/p' | head -n 1)
+
+log "Backing up Keycloak ${KEYCLOAK_VERSION} (${KEYCLOAK_HOME}) on ${HOST_NAME} to ${BACKUP_DIR}"
+
+#####################################################################
+##### Stop, export and copy, then start Keycloak again (always) #####
+#####################################################################
+STAGING_DIR="${BACKUP_DIR}/kc-backup-${STAMP}"
+# The keycloak user writes the export: the staging folder is its own, the backup folder only lets it traverse (0710)
+install -d -m 0700 -o "$KEYCLOAK_USER" -g "$(id -gn "$KEYCLOAK_USER")" "$STAGING_DIR"
+
+if [[ "$(systemctl is-active "$KEYCLOAK_SERVICE" || true)" == active ]]; then
+    log "Stopping ${KEYCLOAK_SERVICE} (the H2 database is locked while it runs)"
+    KEYCLOAK_STOPPED=true
+    systemctl stop "$KEYCLOAK_SERVICE"
+else
+    log "${KEYCLOAK_SERVICE} is not running, it stays stopped"
+fi
+
+# --config-file is a kc.sh option, not an export option: it must come before the command
+log "Exporting every realm to ${STAGING_DIR}/export"
+runuser -u "$KEYCLOAK_USER" -- env "${UNIT_ENV[@]}" "$KC_SH" --config-file="$KEYCLOAK_CONF" export --dir "${STAGING_DIR}/export" --users realm_file
+
+# tar keeps the absolute paths (owners, modes, symlinks too), so a restore copies files/ back to /
+log "Copying ${BACKUP_PATHS[*]} to ${STAGING_DIR}/files"
+mkdir -p "${STAGING_DIR}/files"
+REL_PATHS=()
+for p in "${BACKUP_PATHS[@]}"; do
+    if [[ -e "$p" ]]; then REL_PATHS+=("${p#/}"); fi
+done
+tar cf - -C / "${REL_PATHS[@]}" | tar xpf - -C "${STAGING_DIR}/files"
+
+REALMS=$(find "${STAGING_DIR}/export" -maxdepth 1 -name '*-realm.json' -printf '%f\n' | sed 's/-realm\.json$//' | sort | paste -sd, - | sed 's/,/, /g')
+[[ -n "$REALMS" ]] || fail "kc.sh export wrote no realm to ${STAGING_DIR}/export"
+
+KEYCLOAK_CONF_DIR=$(dirname "$KEYCLOAK_CONF")
+cat > "${STAGING_DIR}/MANIFEST.txt" <<EOF
+Windfire Keycloak backup, written by keycloak-backup.service (weekly keycloak-backup.timer)
+Host:             ${HOST_NAME}
+Date:             $(date --iso-8601=seconds)
+Keycloak version: ${KEYCLOAK_VERSION} (${KEYCLOAK_HOME})
+Java:             ${JAVA_VERSION:-unknown}
+Database:         H2 dev-file in ${KEYCLOAK_HOME}/data
+ExecStart:        ${EXEC_ARGV}
+Realms:           ${REALMS}
+
+Contents
+  export/           kc.sh export --users realm_file: one <realm>-realm.json per realm (master included)
+  files/            ${BACKUP_PATHS[*]} with their absolute paths
+  MANIFEST.txt      this file
+
+Restore on a new installation (same Keycloak version ${KEYCLOAK_VERSION})
+  A) From the export (also works on a newer version, which migrates it):
+     install Keycloak, stop it, then as ${KEYCLOAK_USER}:
+     kc.sh --config-file=${KEYCLOAK_CONF} import --dir export/ --override true
+  B) From the raw database (same version only):
+     stop Keycloak, copy files${KEYCLOAK_HOME}/data to ${KEYCLOAK_HOME}/data (owner ${KEYCLOAK_USER})
+  Then restore files${KEYCLOAK_CONF_DIR} (keycloak.conf, TLS certificate and key, owner root:keycloak)
+  and the systemd unit files, run systemctl daemon-reload and start ${KEYCLOAK_SERVICE}.
+EOF
+
+# Keycloak is down only for the export and the copy, the archive is written while it runs
+restart_keycloak || true
+
+###########################################
+##### Archive and rotate              #####
+###########################################
+ARCHIVE="${BACKUP_DIR}/keycloak-${KEYCLOAK_VERSION}-backup-${STAMP}.tgz"
+log "Archiving to ${ARCHIVE}"
+tar czf "${ARCHIVE}.part" -C "$BACKUP_DIR" "$(basename "$STAGING_DIR")"
+chmod 0600 "${ARCHIVE}.part"
+mv "${ARCHIVE}.part" "$ARCHIVE"
+rm -rf "$STAGING_DIR"
+STAGING_DIR=
+
+if [[ "$RESTART_FAILED" == true ]]; then
+    fail "backup written to ${ARCHIVE}, but ${KEYCLOAK_SERVICE} did not start again: older backups are not rotated"
+fi
+
+# Newest first: keep $KEEP, remove the rest (only reached after a successful run)
+mapfile -t OLD_ARCHIVES < <(ls -1t "$BACKUP_DIR"/keycloak-*-backup-*.tgz | tail -n +$(( KEEP + 1 )))
+for old in "${OLD_ARCHIVES[@]}"; do
+    log "Removing old backup ${old}"
+    rm -f -- "$old"
+done
+
+log "Keycloak ${KEYCLOAK_VERSION} backed up to ${ARCHIVE} ($(du -h "$ARCHIVE" | cut -f1), sha256 $(sha256sum "$ARCHIVE" | cut -d' ' -f1))"
+log "Realms: ${REALMS}"
+log "Backups kept in ${BACKUP_DIR}:"
+ls -1t "$BACKUP_DIR"/keycloak-*-backup-*.tgz
+{% endraw %}

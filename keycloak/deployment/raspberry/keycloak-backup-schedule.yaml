@@ -1,0 +1,104 @@
+--- # Ansible Playbook to install (or remove) the weekly Keycloak backup on raspberry01, run by schedule-keycloak-backup.sh
+# Installs /usr/local/sbin/keycloak-backup, keycloak-backup.service and keycloak-backup.timer: every week the Pi stops Keycloak,
+# exports every realm, copies data/, configuration, TLS files and unit files (the same content as keycloak-backup.yaml),
+# starts Keycloak again and archives to scheduled_backup_dir, keeping the newest scheduled_backup_keep archives.
+# -e keycloak_backup_schedule_state=absent removes the timer, the service and the script, never the archives.
+- hosts: identitymanager
+  remote_user: "{{ user }}"
+  become: yes
+  vars:
+    src_dir: "{{ playbook_dir }}"
+    keycloak_backup_schedule_state: present
+    backup_script: /usr/local/sbin/keycloak-backup
+    backup_units:
+      - keycloak-backup.service
+      - keycloak-backup.timer
+  vars_files:
+    - "{{ src_dir }}/conf/raspberry-config.yml"
+    - "{{ src_dir }}/conf/keycloak-tls-config.yml"
+    - "{{ src_dir }}/conf/keycloak-backup-config.yml"
+  tasks:
+    - name: Fail on an unknown keycloak_backup_schedule_state
+      assert:
+        that: keycloak_backup_schedule_state in ['present', 'absent']
+        fail_msg: "keycloak_backup_schedule_state must be present or absent, not {{ keycloak_backup_schedule_state }}"
+        quiet: true
+    ###################
+    ##### Install #####
+    ###################
+    - name: Install the weekly Keycloak backup
+      when: keycloak_backup_schedule_state == 'present'
+      block:
+        - name: Read Keycloak systemd unit ExecStart
+          command: "systemctl show {{ keycloak_service }} -p ExecStart --value"
+          register: keycloak_exec_start
+          changed_when: false
+          check_mode: false
+        - name: Fail if kc.sh cannot be found in Keycloak systemd unit
+          assert:
+            that: keycloak_exec_start.stdout is search('path=[^ ;]+/bin/kc\.sh')
+            fail_msg: "Keycloak is not installed on {{ inventory_hostname }} (no kc.sh in the {{ keycloak_service }} systemd unit ExecStart): install it first"
+            quiet: true
+        - name: Ensure "{{ scheduled_backup_dir }}" exists, root:{{ keycloak_group }} 0710
+          # keycloak only traverses it to write the export into its own staging folder, it cannot list or read the archives
+          file:
+            path: "{{ scheduled_backup_dir }}"
+            state: directory
+            owner: root
+            group: "{{ keycloak_group }}"
+            mode: "0710"
+        - name: Install "{{ backup_script }}"
+          template:
+            src: "{{ src_dir }}/templates/keycloak-backup.sh.j2"
+            dest: "{{ backup_script }}"
+            owner: root
+            group: root
+            mode: "0750"
+        - name: Install keycloak-backup systemd units
+          template:
+            src: "{{ src_dir }}/templates/{{ item }}.j2"
+            dest: "/etc/systemd/system/{{ item }}"
+            owner: root
+            group: root
+            mode: "0644"
+          loop: "{{ backup_units }}"
+        - name: Reload systemd, enable and start keycloak-backup.timer
+          systemd:
+            name: keycloak-backup.timer
+            daemon_reload: yes
+            enabled: yes
+            state: started
+        - name: Read keycloak-backup.timer schedule
+          command: systemctl list-timers keycloak-backup.timer --all --no-pager
+          register: backup_timer
+          changed_when: false
+          check_mode: false
+        - name: Show the scheduled backup
+          debug:
+            msg:
+              - "Keycloak backup scheduled {{ scheduled_backup_on_calendar }} on {{ inventory_hostname }}, the newest {{ scheduled_backup_keep }} archives are kept in {{ scheduled_backup_dir }}"
+              - "{{ backup_timer.stdout_lines }}"
+              - "Run it now: sudo systemctl start keycloak-backup.service (Keycloak is stopped for 1-2 minutes); logs: journalctl -u keycloak-backup"
+    ##################
+    ##### Remove #####
+    ##################
+    - name: Remove the weekly Keycloak backup
+      when: keycloak_backup_schedule_state == 'absent'
+      block:
+        - name: Stop and disable keycloak-backup.timer
+          systemd:
+            name: keycloak-backup.timer
+            state: stopped
+            enabled: no
+          failed_when: false  # not installed
+        - name: Remove keycloak-backup systemd units and "{{ backup_script }}"
+          file:
+            path: "{{ item }}"
+            state: absent
+          loop: "{{ backup_units | map('regex_replace', '^', '/etc/systemd/system/') | list + [backup_script] }}"
+        - name: Reload systemd
+          systemd:
+            daemon_reload: yes
+        - name: Show what is left
+          debug:
+            msg: "Weekly Keycloak backup removed from {{ inventory_hostname }}. The archives in {{ scheduled_backup_dir }} are kept (they hold secrets): remove them by hand once you no longer need them"

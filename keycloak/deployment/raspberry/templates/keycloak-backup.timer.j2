@@ -1,0 +1,12 @@
+# Managed by keycloak-backup-schedule.yaml: runs keycloak-backup.service {{ scheduled_backup_on_calendar }}
+[Unit]
+Description=Weekly Keycloak backup to {{ scheduled_backup_dir }}
+
+[Timer]
+OnCalendar={{ scheduled_backup_on_calendar }}
+# Runs at the next boot if raspberry01 was off at the scheduled time
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target
