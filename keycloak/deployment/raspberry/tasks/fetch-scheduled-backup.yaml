@@ -1,0 +1,77 @@
+--- # Included by keycloak-backup-fetch.yaml for each remote_archive: fetch, verify, remove from the Pi, record for sops
+- name: Set paths for "{{ remote_archive | basename }}"
+  set_fact:
+    local_archive: "{{ local_backup_dir }}/{{ remote_archive | basename }}"
+- name: Look for an encrypted copy of "{{ remote_archive | basename }}" on the Mac
+  stat:
+    path: "{{ local_archive }}.sops.json"
+  register: local_encrypted
+  delegate_to: localhost
+  become: no
+- name: Skip "{{ remote_archive | basename }}", already on the Mac
+  set_fact:
+    skipped_archives: "{{ skipped_archives + [remote_archive] }}"
+  when: local_encrypted.stat.exists
+- name: Warn about "{{ remote_archive | basename }}" (kept on {{ inventory_hostname }})
+  debug:
+    msg: "WARNING: {{ local_archive }}.sops.json already exists, {{ remote_archive }} is not fetched and stays on {{ inventory_hostname }}: compare and remove it by hand"
+  when: local_encrypted.stat.exists
+- name: Fetch "{{ remote_archive | basename }}", remove it from {{ inventory_hostname }} only once the copy is verified
+  when: not local_encrypted.stat.exists
+  block:
+    - name: Read checksum of "{{ remote_archive }}"
+      stat:
+        path: "{{ remote_archive }}"
+        get_checksum: yes
+        checksum_algorithm: sha256
+      register: remote_archive_stat
+    - name: Fetch "{{ remote_archive }}" to "{{ local_archive }}"
+      fetch:
+        src: "{{ remote_archive }}"
+        dest: "{{ local_archive }}"
+        flat: yes
+        validate_checksum: yes
+    - name: Make "{{ local_archive }}" readable by you only
+      file:
+        path: "{{ local_archive }}"
+        mode: "0600"
+      delegate_to: localhost
+      become: no
+    - name: Read checksum of "{{ local_archive }}"
+      stat:
+        path: "{{ local_archive }}"
+        get_checksum: yes
+        checksum_algorithm: sha256
+      register: local_archive_stat
+      delegate_to: localhost
+      become: no
+    - name: Fail if the Mac copy differs from "{{ remote_archive }}"
+      assert:
+        that:
+          - local_archive_stat.stat.exists
+          - local_archive_stat.stat.checksum == remote_archive_stat.stat.checksum
+        fail_msg: "{{ local_archive }} does not match {{ remote_archive }} (sha256 {{ remote_archive_stat.stat.checksum }})"
+        quiet: true
+    - name: Record "{{ local_archive }}" for fetch-keycloak-backups.sh (sops encryption), before removing it from the Pi
+      lineinfile:
+        path: "{{ local_backup_dir }}/.last-fetch"
+        line: "{{ local_archive }}"
+        create: yes
+        mode: "0600"
+      delegate_to: localhost
+      become: no
+    # Mac copy verified: remove the archive from the Pi
+    - name: Overwrite and remove "{{ remote_archive }}"
+      # Best effort on flash storage (wear levelling may keep old blocks), the file is removed anyway
+      command: "shred -u {{ remote_archive }}"
+    - name: Ensure "{{ remote_archive }}" is gone
+      file:
+        path: "{{ remote_archive }}"
+        state: absent
+    - name: Add "{{ remote_archive | basename }}" to the fetched backups
+      set_fact:
+        fetched_archives: "{{ fetched_archives + [local_archive] }}"
+  rescue:
+    - name: Fail and keep "{{ remote_archive }}" on {{ inventory_hostname }}
+      fail:
+        msg: "{{ remote_archive }} was not removed from {{ inventory_hostname }}, check it and the Mac copy (archives fetched before it are on the Mac, recorded ones are encrypted by fetch-keycloak-backups.sh). Failed task: {{ ansible_failed_task.name | default('unknown') }}"

@@ -83,6 +83,7 @@ The procedures under **[keycloak/deployment/](keycloak/deployment/)** are:
 | [upgrade-keycloak.sh](keycloak/deployment/upgrade-keycloak.sh) | Upgrades the Keycloak installed on raspberry01 |
 | [backup-keycloak.sh](keycloak/deployment/backup-keycloak.sh) `[-v <version>] [-y]` | Backs up the Keycloak on raspberry01 to the Mac, encrypted with sops |
 | [schedule-keycloak-backup.sh](keycloak/deployment/schedule-keycloak-backup.sh) `[--remove] [-y]` | Installs (or removes) the weekly Keycloak backup on raspberry01, keeping the last 4 |
+| [fetch-keycloak-backups.sh](keycloak/deployment/fetch-keycloak-backups.sh) `[-y]` | Copies the weekly backups to the Mac, encrypts them with sops and removes them from raspberry01 |
 | [deploy-keycloak-tls.sh](keycloak/deployment/deploy-keycloak-tls.sh) | Deploys a new raspberry01 server certificate |
 | [uninstall-keycloak.sh](keycloak/deployment/uninstall-keycloak.sh) `[-y]` | Removes Keycloak from raspberry01 |
 
@@ -208,15 +209,21 @@ journalctl -u keycloak-backup                 # logs
 sudo ls -l /var/backups/keycloak              # archives
 ```
 
-To keep a copy on the Mac, encrypted like the manual backups:
+To copy the weekly backups to the Mac, run **[fetch-keycloak-backups.sh](keycloak/deployment/fetch-keycloak-backups.sh)** from the Mac (`mac_ip`). It asks for confirmation (skip it with `-y`) and for the pi sudo password, then runs **[keycloak-backup-fetch.yaml](keycloak/deployment/raspberry/keycloak-backup-fetch.yaml)**:
 
 ```bash
-ARCHIVE=<archive>.tgz
-ssh -t pi@raspberry01 "sudo install -m 0600 -o pi -g pi /var/backups/keycloak/$ARCHIVE ~/$ARCHIVE"
-scp -p pi@raspberry01:"$ARCHIVE" ~/opt/keycloak/backup/
-ssh pi@raspberry01 "shred -u ~/$ARCHIVE"
-sops/sops-crypt.sh -e -f ~/opt/keycloak/backup/$ARCHIVE -r
+cd keycloak/deployment
+./fetch-keycloak-backups.sh
 ```
+
+The playbook handles every `keycloak-*-backup-*.tgz` in `/var/backups/keycloak`, one at a time. In-progress `.part` files are ignored.
+1. It fetches the archive to the same folder as `backup-keycloak.sh` (`~/opt/keycloak/backup`, file 0600), under the same name.
+2. It compares the sha256 checksums of both copies.
+3. Only once they match does it remove the archive from raspberry01 (`shred -u`).
+
+An archive whose `.sops.json` is already on the Mac is skipped and kept on the Pi. If something fails, the current archive stays on the Pi.
+
+The script then encrypts each archive the playbook copied, using **[sops-crypt.sh](sops/sops-crypt.sh)** `-e -r -y` to `<archive>.sops.json`. It does this even when the playbook failed partway through. The plain archive is deleted only after a verified round trip.
 
 Restore works the same way as for the manual backups (see `MANIFEST.txt` in the archive).
 
