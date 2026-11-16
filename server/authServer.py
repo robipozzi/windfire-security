@@ -5,7 +5,6 @@ from datetime import datetime, UTC
 from fastapi import FastAPI, HTTPException # pyright: ignore[reportMissingImports]
 from fastapi.requests import Request # pyright: ignore[reportMissingImports]
 from fastapi.responses import JSONResponse, RedirectResponse # pyright: ignore[reportMissingImports]
-from fastapi.middleware.cors import CORSMiddleware # pyright: ignore[reportMissingImports]
 from fastapi.middleware.trustedhost import TrustedHostMiddleware # pyright: ignore[reportMissingImports]
 from fastapi.middleware.gzip import GZipMiddleware # pyright: ignore[reportMissingImports]
 from apiRouter import api
@@ -54,21 +53,6 @@ app = FastAPI(
 # Brute-force protection for /v1/security/auth: per-IP limit (slowapi), applied only to decorated endpoints
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
-
-# =======================================================================
-# ================== START - Enable CORS configuration ==================
-# =======================================================================
-origins=ALLOWED_HOSTS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-# =====================================================================
-# ================== END - Enable CORS configuration ==================
-# =====================================================================
 
 # ###########################################################################
 # ################## START - Enable TLS/SSL configuration ###################
