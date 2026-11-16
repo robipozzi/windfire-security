@@ -14,6 +14,11 @@ main()
         echo -e "Python virtual environment ${BLU}$PYTHON_TEST_VIRTUAL_ENV${RESET} exists, activating ..."
         echo
         activate
+        if requirementsChanged; then
+            echo -e "${MAGENTA}requirements.txt changed since the last install, installing ...${RESET}"
+            echo
+            installPrereqs
+        fi
     else
         echo -e "${MAGENTA}Python virtual environment $PYTHON_TEST_VIRTUAL_ENV does not exist, creating ...${RESET}"
         echo
@@ -37,6 +42,15 @@ create()
 activate()
 {
     source ./activatePythonVenv.sh
+}
+
+# ===== REQUIREMENTS CHANGE CHECK FUNCTION =====
+# True when requirements.txt differs from the one recorded by installPrereqs.sh (or none is recorded)
+requirementsChanged()
+{
+    local stamp
+    stamp=$(shasum -a 256 requirements.txt | cut -d' ' -f1)
+    [ "$(cat "$VIRTUAL_ENV/.requirements.sha256" 2>/dev/null)" != "$stamp" ]
 }
 
 # ===== INSTALL PYTHON PREREQUISITE MODULES FUNCTION =====
