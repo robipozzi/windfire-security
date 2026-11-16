@@ -110,7 +110,7 @@ Entry point is `authServer.py`: builds the FastAPI `app`, wires CORS/TrustedHost
 - **No forwarded headers**: the server is exposed directly with no reverse proxy. Every `uvicorn.run` call passes `proxy_headers=False`, and the middleware decides HTTPS from `request.url.scheme` only, so a client-sent `X-Forwarded-Proto`/`X-Forwarded-Ssl` doesn't bypass the redirect.
 - **Error bodies**: they carry fixed details only, never exception text, `str(e)`, configured service names or stack traces. The cause goes to the module logger, and `global_exception_handler` uses `logger.exception`.
 
-Routing is nested under a version prefix: `apiRouter.py` defines `api = APIRouter(prefix="/v1")` and includes `routers/healthRouters.py` (`/v1/monitor/health`) and `routers/authRouters.py` (`/v1/security/auth`, `/v1/security/verify`). A `v2` router is declared but unused — don't assume `/v2` endpoints exist.
+Routing is nested under a version prefix: `apiRouter.py` defines `api = APIRouter(prefix="/v1")` and includes `routers/healthRouters.py` (`/v1/monitor/health`) and `routers/authRouters.py` (`/v1/security/auth`, `/v1/security/verify`). There is no `/v2` router; `tests/unit/test_api.py::test_v2_does_not_exist` asserts `/v2` returns 404.
 
 Auth logic lives in `keycloakAuth.py`, independent of FastAPI:
 - `KeycloakConfig` resolves per-service Keycloak realm/client credentials by looking up `service_config.json` via `config/service_config_reader.py` (`ServiceConfigReader`/`serviceConfig` singleton).
