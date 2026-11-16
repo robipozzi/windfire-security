@@ -303,7 +303,7 @@ keycloak-26.8.1/bin/kc.sh start-dev --http-port=18080 --http-management-port=190
 The restored realms keep their settings. If a realm has a *Frontend URL* set to `https://raspberry01:8443`, its login pages redirect to raspberry01 instead of the scratch Keycloak.
 
 ##### Restore on raspberry01
-Run this only to really restore raspberry01, for example after a lost SD card or a broken database. Test the backup with `restore-test.sh` first. sudo on the Pi asks for the `pi` password, so connect with `ssh -t`. In the commands, `<stamp>` is the date in the backup name, and `H=/opt/keycloak/keycloak-<version>` is the install.
+Run this only to really restore raspberry01, for example after a lost SD card or a broken database. Test the backup with `restore-test.sh` first. The Pi only accepts the `~/.ssh/ansible_rsa` key, so pass `-i ~/.ssh/ansible_rsa` to `scp` and `ssh`. sudo on the Pi asks for the `pi` password, so connect with `ssh -t`. In the commands, `<stamp>` is the date in the backup name, and `H=/opt/keycloak/keycloak-<version>` is the install.
 
 **1. Copy the backup to the Pi** (on the Mac):
 
@@ -311,8 +311,8 @@ Run this only to really restore raspberry01, for example after a lost SD card or
 B=keycloak-26.8.1-backup-<stamp>.tgz
 T=$(mktemp -d)                      # mode 0700
 ~/dev/windfire-security/sops/sops-crypt.sh -d -f ~/opt/keycloak/backup/$B.sops.json -o $T/$B
-scp $T/$B pi@raspberry01: && rm -rf $T
-ssh -t pi@raspberry01
+scp -i ~/.ssh/ansible_rsa $T/$B pi@raspberry01: && rm -rf $T
+ssh -t -i ~/.ssh/ansible_rsa pi@raspberry01
 ```
 
 **2. Unpack it into a folder only root and `keycloak` can enter** (on the Pi):
