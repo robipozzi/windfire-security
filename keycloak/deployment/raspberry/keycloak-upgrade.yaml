@@ -40,8 +40,8 @@
       changed_when: false
       check_mode: false
       no_log: true  # may still hold KEYCLOAK_ADMIN_PASSWORD
-    - name: Read Keycloak systemd unit files and working directory
-      command: "systemctl show {{ keycloak_service }} -p FragmentPath -p DropInPaths -p WorkingDirectory"
+    - name: Read Keycloak systemd unit files, working directory and writable paths
+      command: "systemctl show {{ keycloak_service }} -p FragmentPath -p DropInPaths -p WorkingDirectory -p ReadWritePaths"
       register: keycloak_unit_files
       changed_when: false
       check_mode: false
@@ -49,9 +49,10 @@
       set_fact:
         kc_sh: "{{ keycloak_exec_start.stdout | regex_search('path=([^ ;]+)', '\\1') | default([''], true) | first }}"
         exec_argv: "{{ keycloak_exec_start.stdout | regex_search(exec_argv_regex, '\\1') | default([''], true) | first }}"
-        keycloak_optimized: "{{ '--optimized' in keycloak_exec_start.stdout }}"
         unit_files: "{{ ([keycloak_unit_files.stdout | regex_search('(?m)^FragmentPath=(.*)$', '\\1') | default([''], true) | first] + (keycloak_unit_files.stdout | regex_search('(?m)^DropInPaths=(.*)$', '\\1') | default([''], true) | first).split()) | select | list }}"
         working_dir: "{{ keycloak_unit_files.stdout | regex_search('(?m)^WorkingDirectory=(.*)$', '\\1') | default([''], true) | first }}"
+        # Sandbox ReadWritePaths (space separated, "-" prefix = optional path); empty for a unit without sandbox
+        rw_paths: "{{ (keycloak_unit_files.stdout | regex_search('(?m)^ReadWritePaths=(.*)$', '\\1') | default([''], true) | first).split() }}"
         backup_stamp: "{{ ansible_facts.date_time.date | replace('-', '') }}-{{ ansible_facts.date_time.hour }}{{ ansible_facts.date_time.minute }}{{ ansible_facts.date_time.second }}"
     - name: Set Keycloak environment without admin credentials (used by export and build)
       set_fact:
@@ -68,6 +69,12 @@
       set_fact:
         old_home: "{{ kc_sh | dirname | dirname }}"
         old_version: "{{ kc_sh | dirname | dirname | basename | regex_search('^keycloak-(\\d+\\.\\d+\\.\\d+)$', '\\1') | default([''], true) | first }}"
+    - name: Map ReadWritePaths under "{{ old_home }}" to "{{ new_home }}"
+      set_fact:
+        new_rw_paths: "{{ rw_paths | map('regex_replace', old_home_regex, '\\1' ~ new_home ~ '\\2') | list }}"
+      vars:
+        # Whole path component only: /opt/keycloak/keycloak-26.8.1 must not match /opt/keycloak/keycloak-26.8.10
+        old_home_regex: "{{ '^(-?)' ~ (old_home | regex_escape) ~ '(/|$)' }}"
     - name: Fail if the current Keycloak version cannot be read from its install directory
       assert:
         that: old_version | length > 0
@@ -243,13 +250,12 @@
         ###############################################################
         ##### Copy data, providers and themes (old install kept)  #####
         ###############################################################
-        - name: Ensure "{{ new_home }}/data" exists
+        - name: Ensure "{{ new_home }}/data" exists (the sandboxed unit's ReadWritePaths, it must exist before the start)
           file:
             path: "{{ new_home }}/data"
             state: directory
             owner: "{{ keycloak_user }}"
             group: "{{ keycloak_group }}"
-          when: old_data_dir.stat.exists
         - name: Copy "{{ old_home }}/data" to "{{ new_home }}/data"
           command: "cp -a {{ old_home }}/data/. {{ new_home }}/data/"
           when: old_data_dir.stat.exists
@@ -292,10 +298,18 @@
           register: kc_conf_db_pass
           when: h2_credentials_needed | bool
           no_log: true
+        # Build option, applied by the build below
+        - name: Set cache=local in "{{ keycloak_conf }}" (single node, no JGroups cluster discovery)
+          lineinfile:
+            path: "{{ keycloak_conf }}"
+            regexp: '^\s*cache\s*='
+            line: "cache=local"
+            backup: yes
+          register: kc_conf_cache
         - name: Remember keycloak.conf backup
           set_fact:
             # Each lineinfile backs up keycloak.conf before its own change: the first backup taken is the original file
-            kc_conf_backup: "{{ [kc_conf_db.backup | default(''), kc_conf_db_user.backup | default(''), kc_conf_db_pass.backup | default('')] | select | first | default('') }}"
+            kc_conf_backup: "{{ [kc_conf_db.backup | default(''), kc_conf_db_user.backup | default(''), kc_conf_db_pass.backup | default(''), kc_conf_cache.backup | default('')] | select | first | default('') }}"
         ###################################################
         ##### Point the systemd unit at the new kc.sh #####
         ###################################################
@@ -329,6 +343,11 @@
               {% if working_dir is search('^' ~ old_home) %}
               WorkingDirectory={{ working_dir | replace(old_home, new_home) }}
               {% endif %}
+              {% if new_rw_paths != rw_paths %}
+              # ReadWritePaths is a list: the empty line drops the old version's paths before setting the new ones
+              ReadWritePaths=
+              ReadWritePaths={{ new_rw_paths | join(' ') }}
+              {% endif %}
         - name: Reload systemd
           systemd:
             daemon_reload: yes
@@ -342,11 +361,12 @@
             that: keycloak_unit_env_after.stdout is not search('KEYCLOAK_ADMIN')
             fail_msg: "KEYCLOAK_ADMIN* is still set for {{ keycloak_service }} (EnvironmentFile= or a drop-in outside {{ unit_files }}?), remove it by hand"
             quiet: true
-        - name: Build Keycloak {{ keycloak_version }} (ExecStart uses --optimized)
+        # Always: the new install has never been built and keycloak.conf may have changed (cache, H2 credentials).
+        # A start without --optimized could not build it either, lib/quarkus is read-only in the sandboxed unit
+        - name: Build Keycloak {{ keycloak_version }}
           command: "{{ new_home }}/bin/kc.sh --config-file={{ keycloak_conf }} build"
           become_user: "{{ keycloak_user }}"
           environment: "{{ unit_env }}"
-          when: keycloak_optimized | bool
         ############################################
         ##### Start and verify the new version #####
         ############################################
@@ -419,7 +439,8 @@
     - name: Show upgrade summary
       debug:
         msg:
-          - "Keycloak upgraded: {{ old_home }} -> {{ new_home }} (built: {{ keycloak_optimized }})"
+          - "Keycloak upgraded: {{ old_home }} -> {{ new_home }} (built, cache=local)"
+          - "ReadWritePaths: {{ (new_rw_paths != rw_paths) | ternary(new_rw_paths | join(' '), 'unchanged (' ~ (rw_paths | join(' ') | default('none', true)) ~ ')') }}"
           - "{{ keycloak_issuer_realm }} issuer: {{ old_issuer | default('not checked, realm not found', true) }}"
           - "Backup: {{ remote_directory }}/backup-{{ backup_stamp }}.tgz, export: {{ remote_directory }}/export-{{ backup_stamp }}"
           - "keycloak.conf backup: {{ kc_conf_backup | default('none', true) }} (H2 sa/password set: {{ h2_credentials_needed }})"

@@ -6,3 +6,5 @@ https-port={{ keycloak_https_port }}
 https-certificate-file={{ keycloak_tls_dir }}/{{ keycloak_cert_name }}.crt
 https-certificate-key-file={{ keycloak_tls_dir }}/{{ keycloak_cert_name }}.key
 db=dev-file
+# Single node: local Infinispan caches, no JGroups cluster discovery. Build option: run kc.sh build after changing it
+cache=local

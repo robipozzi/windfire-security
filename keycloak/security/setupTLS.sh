@@ -273,7 +273,8 @@ printInstallInstructions()
     fi
     echo -e "${BLU}***** Next steps on $COMMON_NAME *****${RESET}"
     echo -e "Copy the files to $COMMON_NAME and install them in ${BLU}$KEYCLOAK_TLS_REMOTE_DIR${RESET}:"
-    echo "    scp \"$CERTS_DIR/$KEYCLOAK_SERVER_CERTIFICATE\" \"$CERTS_DIR/$KEYCLOAK_SERVER_KEY\" \"$ROOT_CA_CERTIFICATE_PATH\" pi@$COMMON_NAME:/tmp/"
+    echo "    scp -i ~/.ssh/ansible_rsa \"$CERTS_DIR/$KEYCLOAK_SERVER_CERTIFICATE\" \"$CERTS_DIR/$KEYCLOAK_SERVER_KEY\" \"$ROOT_CA_CERTIFICATE_PATH\" pi@$COMMON_NAME:/tmp/"
+    echo "    ssh -t -i ~/.ssh/ansible_rsa pi@$COMMON_NAME"
     echo "    sudo install -o root -g keycloak -m 0640 /tmp/$KEYCLOAK_SERVER_CERTIFICATE /tmp/$KEYCLOAK_SERVER_KEY $KEYCLOAK_TLS_REMOTE_DIR/"
     echo "    sudo install -o root -g keycloak -m 0644 /tmp/$KEYCLOAK_ROOT_CA_CERTIFICATE $KEYCLOAK_TLS_REMOTE_DIR/"
     echo "    shred -u /tmp/$KEYCLOAK_SERVER_KEY && rm -f /tmp/$KEYCLOAK_SERVER_CERTIFICATE /tmp/$KEYCLOAK_ROOT_CA_CERTIFICATE"

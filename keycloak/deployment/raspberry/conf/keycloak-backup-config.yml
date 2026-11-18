@@ -7,3 +7,11 @@ local_backup_dir: "{{ lookup('env', 'HOME') }}/opt/keycloak/backup"
 remote_backup_dir: /opt/keycloak
 # Free space needed on remote_backup_dir besides 3x the backed up files (staging copy, export, archive)
 keycloak_backup_extra_space_kb: 102400
+# Scheduled backup on raspberry01 (keycloak-backup.timer, installed by keycloak-backup-schedule.yaml via schedule-keycloak-backup.sh)
+# Folder of the archives, root:keycloak 0710 (keycloak only traverses it to write the export), archives root 0600.
+# Outside remote_backup_dir (/opt/keycloak), so uninstall-keycloak.sh keeps it
+scheduled_backup_dir: /var/backups/keycloak
+# Number of archives kept, the older ones are removed after each successful run
+scheduled_backup_keep: 4
+# systemd OnCalendar expression
+scheduled_backup_on_calendar: "Sun *-*-* 03:30:00"

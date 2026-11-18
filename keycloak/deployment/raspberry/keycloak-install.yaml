@@ -195,6 +195,13 @@
             owner: root
             group: "{{ keycloak_group }}"
             mode: "0640"
+        - name: Ensure "{{ keycloak_home }}/data" exists (the unit's only ReadWritePaths, it must exist before the first start)
+          file:
+            path: "{{ keycloak_home }}/data"
+            state: directory
+            owner: "{{ keycloak_user }}"
+            group: "{{ keycloak_group }}"
+            mode: "0750"
         - name: Create Keycloak systemd unit
           template:
             src: "{{ src_dir }}/templates/keycloak.service.j2"

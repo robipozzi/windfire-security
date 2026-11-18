@@ -1,6 +1,7 @@
 --- # Ansible Playbook to remove Keycloak from raspberry01, run by uninstall-keycloak.sh
 # Stop and disable the systemd unit, remove unit, drop-ins, /etc/keycloak, /opt/keycloak (backups and exports included),
-# legacy utility scripts, then the keycloak user and group
+# legacy utility scripts, the weekly backup timer, service and script, then the keycloak user and group.
+# The weekly backup archives (scheduled_backup_dir, /var/backups/keycloak) are kept.
 - hosts: identitymanager
   remote_user: "{{ user }}"
   become: yes
@@ -9,7 +10,22 @@
   vars_files:
     - "{{ src_dir }}/conf/raspberry-config.yml"
     - "{{ src_dir }}/conf/keycloak-tls-config.yml"
+    - "{{ src_dir }}/conf/keycloak-backup-config.yml"
   tasks:
+    - name: Stop and disable the weekly Keycloak backup timer
+      systemd:
+        name: keycloak-backup.timer
+        state: stopped
+        enabled: no
+      failed_when: false  # not installed
+    - name: Remove the weekly Keycloak backup units and script (the archives are kept)
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/keycloak-backup.timer
+        - /etc/systemd/system/keycloak-backup.service
+        - /usr/local/sbin/keycloak-backup
     - name: Stop and disable Keycloak
       systemd:
         name: "{{ keycloak_service }}"
@@ -42,3 +58,6 @@
       group:
         name: "{{ keycloak_group }}"
         state: absent
+    - name: Show the weekly backup archives left on {{ inventory_hostname }}
+      debug:
+        msg: "The weekly backup archives in {{ scheduled_backup_dir }} are kept (they hold secrets): copy what you need, then remove them by hand"
