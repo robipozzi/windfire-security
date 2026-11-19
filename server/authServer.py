@@ -138,6 +138,7 @@ def main(port_override=None):
     logger.info(f"  ALLOWED_HOSTS: {settings.get('ALLOWED_HOSTS')}")
     logger.info(f"  ENABLE_API_DOCS: {settings.get('ENABLE_API_DOCS')}")
     logger.info(f"  KEYCLOAK_SERVER_URL: {settings.get('KEYCLOAK_SERVER_URL')}")
+    logger.info(f"  KEYCLOAK_ISSUER_URL: {settings.get('KEYCLOAK_ISSUER_URL')}")
     
     logger.info(f"Starting {SERVICE_NAME} server...")
     host=settings.get('API_HOST')

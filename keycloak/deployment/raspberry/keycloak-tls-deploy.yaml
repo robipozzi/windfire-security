@@ -1,6 +1,7 @@
 --- # Ansible Playbook to deploy Keycloak server certificate signed by Windfire Keycloak Root CA
-# Copy certificate and key, update keycloak.conf (TLS files, cache=local), stop, build if keycloak.conf changed,
-# restart Keycloak, backup old certificate and key
+# Copy certificate and key, update keycloak.conf (TLS files, cache=local, hostname and reverse proxy options),
+# stop, build if a build option changed, restart Keycloak, pin the master realm to the internal URL when a public URL is set,
+# check the issuers and the admin console, backup old certificate and key
 # The systemd unit is re-templated on every run from templates/keycloak.service.j2, with keycloak_home and JAVA_HOME
 # read from the running unit (so it follows the keycloak-upgrade.yaml drop-in): a change restarts Keycloak
 - hosts: identitymanager
@@ -12,6 +13,8 @@
     local_server_key: "{{ local_certs_dir }}/{{ keycloak_cert_name }}.key"
     remote_server_cert: "{{ keycloak_tls_dir }}/{{ keycloak_cert_name }}.crt"
     remote_server_key: "{{ keycloak_tls_dir }}/{{ keycloak_cert_name }}.key"
+    # Realm whose issuer must be the public URL (its check is skipped while the realm does not exist)
+    keycloak_issuer_realm: windfire
   vars_files:
     - "{{ src_dir }}/conf/raspberry-config.yml"
     - "{{ src_dir }}/conf/keycloak-tls-config.yml"
@@ -81,6 +84,11 @@
         fail_msg: "{{ local_server_cert }} and {{ local_server_key }} do not match"
         quiet: true
       run_once: true
+    - name: Fail if keycloak_public_url is not an https URL without trailing slash
+      assert:
+        that: keycloak_public_url is match('^https://[^/]+(/.*[^/])?$')
+        fail_msg: "keycloak_public_url must be an https URL without trailing slash, got: {{ keycloak_public_url }}"
+        quiet: true
     ###############################################
     ##### Pre-flight checks on remote Keycloak #####
     ###############################################
@@ -202,13 +210,31 @@
         line: "cache=local"
         backup: yes
       register: kc_conf_cache
+    # Hostname v2 and reverse proxy: hostname always, the other four only with a public URL (removed otherwise)
+    - name: Set hostname and reverse proxy options in "{{ keycloak_conf }}"
+      lineinfile:
+        path: "{{ keycloak_conf }}"
+        regexp: '^\s*{{ item.key }}\s*='
+        line: "{{ item.key }}={{ item.value }}"
+        state: "{{ (item.enabled | bool) | ternary('present', 'absent') }}"
+        backup: yes
+      loop:
+        - { key: hostname, value: "{{ keycloak_public_url }}", enabled: true }
+        - { key: hostname-admin, value: "{{ keycloak_internal_url }}", enabled: "{{ keycloak_public_hostname }}" }
+        - { key: hostname-backchannel-dynamic, value: "true", enabled: "{{ keycloak_public_hostname }}" }
+        - { key: proxy-headers, value: xforwarded, enabled: "{{ keycloak_public_hostname }}" }
+        - { key: proxy-trusted-addresses, value: "127.0.0.1", enabled: "{{ keycloak_public_hostname }}" }
+      loop_control:
+        label: "{{ item.key }}"
+      register: kc_conf_hostname
     - name: Decide if Keycloak must be restarted and built
       set_fact:
-        kc_conf_changed: "{{ kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed or kc_conf_cache is changed }}"
+        kc_conf_changed: "{{ kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed or kc_conf_cache is changed or kc_conf_hostname is changed }}"
         # Each lineinfile backs up keycloak.conf before its own change: the first backup taken is the original file
-        kc_conf_backup: "{{ [kc_conf_cert.backup | default(''), kc_conf_key.backup | default(''), kc_conf_keystore.backup | default(''), kc_conf_cache.backup | default('')] | select | first | default('') }}"
-        restart_needed: "{{ tls_cert_copy is changed or tls_key_copy is changed or kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed or kc_conf_cache is changed or keycloak_unit is changed or keycloak_force_build | bool }}"
-        # cache is a build option, read only by kc.sh build when Keycloak starts --optimized: build whenever keycloak.conf changed, or if forced
+        kc_conf_backup: "{{ ([kc_conf_cert.backup | default(''), kc_conf_key.backup | default(''), kc_conf_keystore.backup | default(''), kc_conf_cache.backup | default('')] + (kc_conf_hostname.results | map(attribute='backup', default='') | list)) | select | first | default('') }}"
+        restart_needed: "{{ tls_cert_copy is changed or tls_key_copy is changed or kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed or kc_conf_cache is changed or kc_conf_hostname is changed or keycloak_unit is changed or keycloak_force_build | bool }}"
+        # cache is a build option, read only by kc.sh build when Keycloak starts --optimized: build whenever keycloak.conf changed, or if forced.
+        # Hostname and proxy options are runtime options (not in kc.sh build --help): a restart is enough
         build_needed: "{{ keycloak_force_build | bool or kc_conf_cert is changed or kc_conf_key is changed or kc_conf_keystore is changed or kc_conf_cache is changed }}"
     ######################################################
     ##### Stop, build if needed and restart Keycloak #####
@@ -247,6 +273,126 @@
           delay: 5
           delegate_to: localhost
           become: no
+        # With a public URL, the master realm gets a Frontend URL equal to the internal URL: its issuer, and the admin
+        # console login (hostname-admin alone still posts the master login form to the public URL), stay on the
+        # internal URL, so admin login works with the tunnel off and /realms/master need not be public.
+        # The Frontend URL is a realm attribute (database), set through the admin REST API from the controller.
+        # Back at the default URL a pinned Frontend URL equals hostname, so it is left as is
+        - name: Read master realm issuer over "{{ keycloak_internal_url }}"
+          uri:
+            url: "{{ keycloak_internal_url }}/realms/master/.well-known/openid-configuration"
+            ca_path: "{{ local_root_ca_cert }}"
+            validate_certs: yes
+            return_content: yes
+          register: master_discovery
+          check_mode: false
+          delegate_to: localhost
+          become: no
+          run_once: true
+        - name: Pin the master realm Frontend URL to "{{ keycloak_internal_url }}"
+          when:
+            - keycloak_public_hostname | bool
+            - master_discovery.json.issuer != keycloak_internal_url ~ '/realms/master'
+            - not ansible_check_mode
+          delegate_to: localhost
+          become: no
+          run_once: true
+          block:
+            - name: Ask for the Keycloak admin username (WINDFIRE_KC_ADMIN_USERNAME not set)
+              pause:
+                prompt: "Keycloak master realm admin username, to set the master realm Frontend URL"
+              register: kc_admin_username_prompt
+              when: lookup('env', 'WINDFIRE_KC_ADMIN_USERNAME') | length == 0
+            - name: Ask for the Keycloak admin password (WINDFIRE_KC_ADMIN_PASSWORD not set)
+              pause:
+                prompt: "Keycloak master realm admin password"
+                echo: no
+              register: kc_admin_password_prompt
+              when: lookup('env', 'WINDFIRE_KC_ADMIN_PASSWORD') | length == 0
+            - name: Get an admin token from "{{ keycloak_internal_url }}"
+              uri:
+                url: "{{ keycloak_internal_url }}/realms/master/protocol/openid-connect/token"
+                method: POST
+                body_format: form-urlencoded
+                body:
+                  grant_type: password
+                  client_id: admin-cli
+                  username: "{{ lookup('env', 'WINDFIRE_KC_ADMIN_USERNAME') | default(kc_admin_username_prompt.user_input | default(''), true) }}"
+                  password: "{{ lookup('env', 'WINDFIRE_KC_ADMIN_PASSWORD') | default(kc_admin_password_prompt.user_input | default(''), true) }}"
+                ca_path: "{{ local_root_ca_cert }}"
+                validate_certs: yes
+              register: kc_admin_token
+              no_log: true
+            - name: Read the master realm attributes
+              uri:
+                url: "{{ keycloak_internal_url }}/admin/realms/master"
+                headers:
+                  Authorization: "Bearer {{ kc_admin_token.json.access_token }}"
+                ca_path: "{{ local_root_ca_cert }}"
+                validate_certs: yes
+                return_content: yes
+              register: kc_master_realm
+              no_log: true
+            - name: Set the master realm Frontend URL attribute
+              # A PUT replaces the whole attributes map: send the current attributes with frontendUrl added
+              uri:
+                url: "{{ keycloak_internal_url }}/admin/realms/master"
+                method: PUT
+                headers:
+                  Authorization: "Bearer {{ kc_admin_token.json.access_token }}"
+                body_format: json
+                body:
+                  attributes: "{{ kc_master_realm.json.attributes | default({}) | combine({'frontendUrl': keycloak_internal_url}) }}"
+                ca_path: "{{ local_root_ca_cert }}"
+                validate_certs: yes
+                status_code: 204
+              changed_when: true
+              no_log: true
+            - name: Read master realm issuer again
+              uri:
+                url: "{{ keycloak_internal_url }}/realms/master/.well-known/openid-configuration"
+                ca_path: "{{ local_root_ca_cert }}"
+                validate_certs: yes
+                return_content: yes
+              register: master_discovery_pinned
+        - name: Fail if the master realm issuer is not "{{ keycloak_internal_url }}/realms/master"
+          assert:
+            that: master_issuer == keycloak_internal_url ~ '/realms/master'
+            fail_msg: "master realm issuer is {{ master_issuer }}, expected {{ keycloak_internal_url }}/realms/master"
+            quiet: true
+          vars:
+            # A skipped task still registers its variable: use the second read only if the pin ran
+            master_issuer: "{{ (master_discovery_pinned is skipped) | ternary(master_discovery.json.issuer, master_discovery_pinned.json.issuer | default('')) }}"
+          when: not ansible_check_mode
+          run_once: true
+        - name: Read {{ keycloak_issuer_realm }} realm issuer over "{{ keycloak_internal_url }}"
+          uri:
+            url: "{{ keycloak_internal_url }}/realms/{{ keycloak_issuer_realm }}/.well-known/openid-configuration"
+            ca_path: "{{ local_root_ca_cert }}"
+            validate_certs: yes
+            return_content: yes
+            status_code: [200, 404]
+          register: realm_discovery
+          check_mode: false
+          delegate_to: localhost
+          become: no
+          run_once: true
+        - name: Fail if the {{ keycloak_issuer_realm }} realm issuer is not "{{ keycloak_public_url }}/realms/{{ keycloak_issuer_realm }}"
+          assert:
+            that: realm_discovery.json.issuer == keycloak_public_url ~ '/realms/' ~ keycloak_issuer_realm
+            fail_msg: "{{ keycloak_issuer_realm }} realm issuer is {{ realm_discovery.json.issuer }}, expected {{ keycloak_public_url }}/realms/{{ keycloak_issuer_realm }}"
+            quiet: true
+          when: realm_discovery.status == 200
+          run_once: true
+        - name: Check the admin console answers on "{{ keycloak_internal_url }}"
+          uri:
+            url: "{{ keycloak_internal_url }}/admin/master/console/"
+            ca_path: "{{ local_root_ca_cert }}"
+            validate_certs: yes
+          check_mode: false
+          delegate_to: localhost
+          become: no
+          run_once: true
       rescue:
         - name: Restore previous certificate, key, keycloak.conf and systemd unit
           copy:
@@ -317,6 +463,7 @@
         msg:
           - "{{ deployed_cert.stdout_lines | default(['certificate not read in check mode']) }}"
           - "keycloak.conf changed: {{ kc_conf_changed }} (backup: {{ kc_conf_backup | default('none', true) }})"
+          - "Public URL ({{ keycloak_issuer_realm }} issuer): {{ keycloak_public_url }}, admin console and master realm: {{ keycloak_internal_url }}"
           - "Systemd unit changed: {{ keycloak_unit is changed }} (backup: {{ keycloak_unit.backup_file | default('none', true) }})"
           - "Keycloak restarted: {{ restart_needed }}, built: {{ build_needed }}"
           - "Old certificate and key backup: {{ (old_tls_to_backup | length > 0) | ternary(keycloak_tls_dir ~ '/backup-' ~ backup_stamp, 'nothing to backup') }}"

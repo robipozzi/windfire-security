@@ -40,6 +40,7 @@ TEST_ENV = {
     "ALLOWED_HOSTS": "localhost,testserver",
     "ENABLE_API_DOCS": "false",
     "KEYCLOAK_SERVER_URL": KEYCLOAK_URL,
+    "KEYCLOAK_ISSUER_URL": "",
     "KEYCLOAK_VERIFY_SSL_CERTS": "false",
     "KEYCLOAK_CA_CERT_PATH": "",
     "SERVICE_CONFIG_FILE": str(_TMP_DIR / "service_config.json"),
