@@ -66,7 +66,7 @@
         state: present
 
     # Task 0c: Check the shared CA certificates before the running service is touched: windfire-raspberry
-    # (deploy-windfire-ca.sh) owns {{ windfire_ca_dir }}, this playbook never writes it.
+    # (configure-windfire-infra.sh --tags windfire_ca) owns {{ windfire_ca_dir }}, this playbook never writes it.
     # The service trusts the Windfire Keycloak Root CA (KEYCLOAK_CA_CERT_PATH); the health check uses the Windfire Root CA.
     - name: Check the shared CA folder {{ windfire_ca_dir }} and certificates
       stat:
@@ -81,7 +81,7 @@
       fail:
         msg: >-
           {{ item.item }} on {{ inventory_hostname }} is missing or not root:root
-          {{ '0755' if item.item == windfire_ca_dir else '0644' }}: run deploy-windfire-ca.sh in windfire-raspberry first
+          {{ '0755' if item.item == windfire_ca_dir else '0644' }}: run ./configure-windfire-infra.sh --tags windfire_ca in windfire-raspberry first
       when: >-
         not item.stat.exists
         or item.stat.pw_name != 'root' or item.stat.gr_name != 'root'

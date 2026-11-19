@@ -8,7 +8,7 @@ local_home_dir: "{{ lookup('env', 'HOME') }}"
 local_ssl_dir: "{{ local_home_dir }}/opt/windfire/ssl"
 local_certs_dir: "{{ local_ssl_dir }}/certs/raspberry"
 remote_home_dir: /home/pi
-# Shared, root-owned CA folder installed by windfire-raspberry (deploy-windfire-ca.sh): this playbook only checks it
+# Shared, root-owned CA folder installed by windfire-raspberry (configure-windfire-infra.sh --tags windfire_ca): this playbook only checks it
 windfire_ca_dir: /etc/windfire/ca
 windfire_ca_root_certificate: "WindfireRootCA.crt"
 windfire_server_certificate: "windfire-security.crt"

@@ -208,7 +208,7 @@ printHelp() {
     echo -e "3. Check server/config/service_config.json"
     echo -e "4. Ask for the Keycloak server URL"
     echo -e "5. Run the Ansible playbook (asks for the sudo password of user pi on the Raspberry):"
-    echo -e "   check the shared CA certificates in /etc/windfire/ca (installed by windfire-raspberry's deploy-windfire-ca.sh),"
+    echo -e "   check the shared CA certificates in /etc/windfire/ca (installed by windfire-raspberry's configure-windfire-infra.sh --tags windfire_ca),"
     echo -e "   deploy, encrypt service_config.json with systemd-creds, start the systemd service and health-check it"
     echo
     echo -e "${BOLD}EXIT CODES:${RESET}"
