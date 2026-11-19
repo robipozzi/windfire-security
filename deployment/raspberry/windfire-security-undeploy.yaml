@@ -58,8 +58,34 @@
         daemon_reload: yes
 
     # Task 3: Delete Windfire Security directory on remote server
-    # The shared Windfire Root CA and Windfire Keycloak Root CA truststores are left in place
+    # The pi user and the shared Windfire Root CA and Windfire Keycloak Root CA truststores are left in place
     - name: Remove "{{ remote_windfire_security_dir }}" folder and all its contents on remote server
       ansible.builtin.file:
         path: "{{ remote_windfire_security_dir }}"
+        state: absent
+
+    # Task 4: Remove the service user, after its ACL entry so no entry is left pointing at a deleted uid
+    - name: Check whether "{{ service_user }}" system user exists
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ service_user }}"
+        fail_key: false
+
+    - name: Remove "{{ service_user }}" traverse ACL entry from {{ remote_home_dir }}
+      ansible.posix.acl:
+        path: "{{ remote_home_dir }}"
+        entity: "{{ service_user }}"
+        etype: user
+        state: absent
+      when: (ansible_facts.getent_passwd | default({})).get(service_user)
+
+    - name: Remove "{{ service_user }}" system user
+      ansible.builtin.user:
+        name: "{{ service_user }}"
+        state: absent
+        remove: no
+
+    - name: Remove "{{ service_group }}" system group
+      ansible.builtin.group:
+        name: "{{ service_group }}"
         state: absent
