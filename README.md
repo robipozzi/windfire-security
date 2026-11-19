@@ -670,24 +670,24 @@ deployment/deploy.sh --help
 * the sudo password of user `pi` on the Pi: sudo is not passwordless, so every playbook run asks for it as `BECOME password` ([ansible.cfg](deployment/raspberry/ansible.cfg) sets `become_ask_pass`)
 * `rsync` both locally and on the Pi (used by the Ansible `synchronize` module)
 * on the Pi: Python 3 and systemd with `systemd-creds` (systemd 250 or later, e.g. Raspberry Pi OS Bookworm)
-* the Windfire Root CA in `$HOME/opt/windfire/ssl/truststore` (create it with [createRootCA.sh](ssl/createRootCA.sh))
-* the Windfire Keycloak Root CA in `$HOME/opt/keycloak/ssl/truststore` (create it with [setupTLS.sh](keycloak/security/setupTLS.sh))
+* the shared CA certificates in `/etc/windfire/ca` on raspberry01 (`WindfireRootCA.crt` and `WindfireKeycloakRootCA.crt`, `root:root 0644`), installed by `./configure-windfire-infra.sh --tags windfire_ca` in [windfire-raspberry](https://github.com/robipozzi/windfire-raspberry) from `$HOME/opt/windfire/ssl/truststore` and `$HOME/opt/keycloak/ssl/truststore` (create the CAs with [createRootCA.sh](ssl/createRootCA.sh) and [setupTLS.sh](keycloak/security/setupTLS.sh)). This deploy never copies a CA certificate: it only checks them
 * `server/config/service_config.json` with the real Keycloak `realm`/`client_id`/`client_secret` of every client service (see [First-time setup](#first-time-setup))
 * an Audience mapper on each of those Keycloak clients, and a `KEYCLOAK_SERVER_URL` that matches the issuer in Keycloak's tokens (see [Token verification](#token-verification)); otherwise `/v1/security/verify` rejects every token
 
 The production certificate and key are generated for you if they are missing. Your local `server/.env` and `server/config/service_config.json` are not copied: the Pi gets its own `.env` built from the template, and the service configuration only as an encrypted credential.
 
 ### What `deploy.sh` does
-1. **Pre-flight checks**: checks for `ansible-playbook`, the SSH key, both Root CAs and a valid `server/config/service_config.json`, and stops with a red error if one is missing. If `windfire-security.crt` / `.key` are missing from `$HOME/opt/windfire/ssl/certs/raspberry`, it runs [generateServerCert.sh](ssl/generateServerCert.sh): choose **3. Production** when asked.
+1. **Pre-flight checks**: checks for `ansible-playbook`, the SSH key and a valid `server/config/service_config.json`, and stops with a red error if one is missing. If `windfire-security.crt` / `.key` are missing from `$HOME/opt/windfire/ssl/certs/raspberry`, it runs [generateServerCert.sh](ssl/generateServerCert.sh): choose **3. Production** when asked.
 2. **Configuration**: asks for the Keycloak server URL (default `https://raspberry01:8443`).
 3. **Playbook**: asks for the `pi` sudo password (`BECOME password`), then runs [windfire-security-deploy.yaml](deployment/raspberry/windfire-security-deploy.yaml), configured via **[conf/config.yaml](deployment/raspberry/conf/config.yaml)**:
-   1. stops the `windfire-security` service, and any `authServer.py` process started by hand
-   2. removes and recreates `/home/pi/windfire-security`, and copies the `server/` folder (without caches, the local venv, certificates, logs, `.env` and `service_config.json`)
-   3. builds `server/.env` from [windfire-security.env.j2](deployment/raspberry/templates/windfire-security.env.j2) with non-secret values only (mode `0600`)
-   4. copies the server certificate (`0644`) and key (`0600`) to `server/ssl`, the Windfire Root CA to `/home/pi/opt/windfire/ssl/truststore` and the Windfire Keycloak Root CA to `/home/pi/opt/keycloak/ssl/truststore` (`KEYCLOAK_CA_CERT_PATH`)
-   5. copies [common.sh](common.sh), creates the virtual environment and runs `installPrereqs.sh`
+   1. checks that `/etc/windfire/ca` is `root:root 0755` and holds `WindfireRootCA.crt` and `WindfireKeycloakRootCA.crt` as valid `root:root 0644` certificates, and stops before touching the running service otherwise (run `./configure-windfire-infra.sh --tags windfire_ca` in windfire-raspberry first)
+   2. stops the `windfire-security` service, and any `authServer.py` process started by hand
+   3. removes and recreates `/home/pi/windfire-security`, and copies the `server/` folder (without caches, the local venv, certificates, logs, `.env` and `service_config.json`)
+   4. builds `server/.env` from [windfire-security.env.j2](deployment/raspberry/templates/windfire-security.env.j2) with non-secret values only (mode `0600`)
+   5. copies the server certificate (`0444`) and key (`0400`) to `server/ssl` (`0500`, owned by the `windfire-security` user). No CA certificate is copied: `KEYCLOAK_CA_CERT_PATH` points at the shared `/etc/windfire/ca/WindfireKeycloakRootCA.crt`
+   6. copies [common.sh](common.sh), creates the virtual environment and runs `installPrereqs.sh`
 4. **systemd**: encrypts your local `service_config.json` with `systemd-creds` into `/etc/credstore.encrypted/windfire-security-service-config` (the client secrets are never stored in plaintext on the Pi), installs the unit from [windfire-security.service.j2](deployment/raspberry/templates/windfire-security.service.j2), then enables and starts the service. The unit hands the decrypted file to the server through the `SERVICE_CONFIG_FILE` environment variable. systemd restarts the service 5 seconds after a failure and starts it at boot.
-5. **Health check**: waits for port 8444 and calls `https://raspberry01:8444/v1/monitor/health`, checking the certificate against the Windfire Root CA. If the check fails, it prints the last 50 lines of the journal and of the service log, and the deploy fails.
+5. **Health check**: waits for port 8444 and calls `https://raspberry01:8444/v1/monitor/health`, checking the certificate against `/etc/windfire/ca/WindfireRootCA.crt`. If the check fails, it prints the last 50 lines of the journal and of the service log, and the deploy fails.
 
 Re-run `deploy.sh` whenever `service_config.json` changes (e.g. a new client service): the credential is rebuilt on every deploy.
 
@@ -702,7 +702,7 @@ tail -f ~/windfire-security/server/logs/windfire-security-server.log   # applica
 `server/stop-auth-server.sh` refuses to kill a server managed by systemd (systemd would just restart it): use `systemctl stop` instead.
 
 ### What `undeploy.sh` does
-After a confirmation prompt (skipped with `-y`) and the `pi` sudo password, [windfire-security-undeploy.yaml](deployment/raspberry/windfire-security-undeploy.yaml) stops and disables the service, removes the unit file and the encrypted credential, and deletes `/home/pi/windfire-security`. The Root CA truststores are left in place, since other Windfire services use them.
+After a confirmation prompt (skipped with `-y`) and the `pi` sudo password, [windfire-security-undeploy.yaml](deployment/raspberry/windfire-security-undeploy.yaml) stops and disables the service, removes the unit file and the encrypted credential, and deletes `/home/pi/windfire-security`. The shared CA certificates in `/etc/windfire/ca` are left in place: windfire-raspberry owns them and other Windfire services use them.
 
 ## Dependency monitoring and CI
 The CI badge at the top of this page shows the result of the latest **[CI workflow](.github/workflows/ci.yml)** run on `main`. The workflow runs on every pull request and on every push to `main`:
