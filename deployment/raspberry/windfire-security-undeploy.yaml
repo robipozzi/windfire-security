@@ -58,7 +58,7 @@
         daemon_reload: yes
 
     # Task 3: Delete Windfire Security directory on remote server
-    # The pi user and the shared Windfire Root CA and Windfire Keycloak Root CA truststores are left in place
+    # The pi user and the shared CA certificates in /etc/windfire/ca (owned by windfire-raspberry) are left in place
     - name: Remove "{{ remote_windfire_security_dir }}" folder and all its contents on remote server
       ansible.builtin.file:
         path: "{{ remote_windfire_security_dir }}"

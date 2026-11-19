@@ -65,6 +65,40 @@
         permissions: x
         state: present
 
+    # Task 0c: Check the shared CA certificates before the running service is touched: windfire-raspberry
+    # (deploy-windfire-ca.sh) owns {{ windfire_ca_dir }}, this playbook never writes it.
+    # The service trusts the Windfire Keycloak Root CA (KEYCLOAK_CA_CERT_PATH); the health check uses the Windfire Root CA.
+    - name: Check the shared CA folder {{ windfire_ca_dir }} and certificates
+      stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ windfire_ca_dir }}"
+        - "{{ windfire_ca_dir }}/{{ windfire_ca_root_certificate }}"
+        - "{{ windfire_ca_dir }}/{{ keycloak_ca_root_certificate }}"
+      register: windfire_ca_stat
+
+    - name: Fail if the shared CA folder or a CA certificate is missing or writable by anyone but root
+      fail:
+        msg: >-
+          {{ item.item }} on {{ inventory_hostname }} is missing or not root:root
+          {{ '0755' if item.item == windfire_ca_dir else '0644' }}: run deploy-windfire-ca.sh in windfire-raspberry first
+      when: >-
+        not item.stat.exists
+        or item.stat.pw_name != 'root' or item.stat.gr_name != 'root'
+        or (item.item == windfire_ca_dir and (not item.stat.isdir or item.stat.mode != '0755'))
+        or (item.item != windfire_ca_dir and (not item.stat.isreg or item.stat.mode != '0644'))
+      loop: "{{ windfire_ca_stat.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Check each CA certificate in {{ windfire_ca_dir }} is a valid certificate
+      command: "openssl x509 -noout -in {{ windfire_ca_dir }}/{{ item }}"
+      changed_when: false
+      check_mode: false
+      loop:
+        - "{{ windfire_ca_root_certificate }}"
+        - "{{ keycloak_ca_root_certificate }}"
+
     # Task 1: Stop Windfire Security service on remote server
     - name: Stop "{{ service_name }}" systemd service if running
       ansible.builtin.systemd:
@@ -156,8 +190,8 @@
         group: "{{ service_group }}"
         mode: "0600"
 
-    # Task 5: Copy TLS material to remote server: the service user's own copy of the certificate, key
-    # and Windfire Keycloak Root CA (KEYCLOAK_CA_CERT_PATH in server/.env)
+    # Task 5: Copy TLS material to remote server: the service user's own copy of its certificate and key.
+    # The CA certificates are not copied: the service reads the shared {{ windfire_ca_dir }} (KEYCLOAK_CA_CERT_PATH in server/.env)
     - name: Copy certificate {{ windfire_server_certificate }} from {{ local_certs_dir }} to "{{ remote_windfire_security_dir }}/server/ssl" directory on remote server
       copy:
         src: "{{ local_certs_dir }}/{{ windfire_server_certificate }}"
@@ -173,45 +207,6 @@
         owner: "{{ service_user }}"
         group: "{{ service_group }}"
         mode: "0400"
-
-    - name: Copy {{ keycloak_ca_root_certificate }} from {{ local_keycloak_truststore_dir }} to "{{ remote_windfire_security_dir }}/server/ssl" directory on remote server
-      copy:
-        src: "{{ local_keycloak_truststore_dir }}/{{ keycloak_ca_root_certificate }}"
-        dest: "{{ remote_windfire_security_dir }}/server/ssl/{{ keycloak_ca_root_certificate }}"
-        owner: "{{ service_user }}"
-        group: "{{ service_group }}"
-        mode: "0444"
-
-    - name: Ensure remote truststore directory {{ remote_truststore_dir }} exists
-      file:
-        path: "{{ remote_truststore_dir }}"
-        state: directory
-        mode: "{{ mode }}"
-      become: false
-
-    - name: Copy {{ windfire_ca_root_certificate }} to "{{ remote_truststore_dir }}" directory on remote server
-      copy:
-        src: "{{ local_truststore_dir }}/{{ windfire_ca_root_certificate }}"
-        dest: "{{ remote_truststore_dir }}/{{ windfire_ca_root_certificate }}"
-        owner: "{{ user }}"
-        group: "{{ group }}"
-        mode: "0644"
-
-    # Shared Windfire Keycloak Root CA truststore (the service itself uses its own copy in server/ssl)
-    - name: Ensure remote Keycloak truststore directory {{ remote_keycloak_truststore_dir }} exists
-      file:
-        path: "{{ remote_keycloak_truststore_dir }}"
-        state: directory
-        mode: "{{ mode }}"
-      become: false
-
-    - name: Copy {{ keycloak_ca_root_certificate }} to "{{ remote_keycloak_truststore_dir }}" directory on remote server
-      copy:
-        src: "{{ local_keycloak_truststore_dir }}/{{ keycloak_ca_root_certificate }}"
-        dest: "{{ remote_keycloak_truststore_dir }}/{{ keycloak_ca_root_certificate }}"
-        owner: "{{ user }}"
-        group: "{{ group }}"
-        mode: "0644"
 
     # Task 6: Copy common.sh to remote server (server scripts source ../common.sh)
     - name: Copy common.sh to "{{ remote_windfire_security_dir }}" directory on remote server
@@ -330,7 +325,7 @@
         - name: Call https://{{ health_check_host }}:{{ api_port_secure }}/v1/monitor/health
           uri:
             url: "https://{{ health_check_host }}:{{ api_port_secure }}/v1/monitor/health"
-            ca_path: "{{ remote_truststore_dir }}/{{ windfire_ca_root_certificate }}"
+            ca_path: "{{ windfire_ca_dir }}/{{ windfire_ca_root_certificate }}"
             status_code: 200
           register: health
           until: health.status == 200
