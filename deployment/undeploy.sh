@@ -79,7 +79,7 @@ confirmUndeploy()
         return
     fi
     local answer
-    read -r -p "${YELLOW}This stops and removes the windfire-security service, its encrypted service configuration and application folder. Continue? [y/N]: ${END}" answer
+    read -r -p "${YELLOW}This stops and removes the windfire-security service, its encrypted service configuration, application folder and windfire-security system user. Continue? [y/N]: ${END}" answer
     case $answer in
         y|Y|yes|YES) ;;
         *)  echo -e "${CYAN}Undeploy cancelled${RESET}"
@@ -115,7 +115,8 @@ printHelp() {
     echo
     echo -e "${BOLD}DESCRIPTION:${RESET}"
     echo -e "Stops and removes the windfire-security systemd service, its encrypted service"
-    echo -e "configuration and the application folder from the security_service Ansible host group."
+    echo -e "configuration, the application folder and the windfire-security system user and group"
+    echo -e "from the security_service Ansible host group."
     echo
     echo -e "${BOLD}USAGE:${RESET}"
     echo -e "    ./undeploy.sh [1] [-y]"

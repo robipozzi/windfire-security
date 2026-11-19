@@ -216,7 +216,8 @@ printHelp() {
     echo
     echo -e "${BOLD}DESCRIPTION:${RESET}"
     echo -e "Deploys the Windfire Security Authentication Service to the security_service"
-    echo -e "Ansible host group and runs it as the windfire-security systemd service."
+    echo -e "Ansible host group and runs it as the windfire-security systemd service,"
+    echo -e "under the windfire-security system user."
     echo
     echo -e "${BOLD}USAGE:${RESET}"
     echo -e "    ./deploy.sh [1]"
