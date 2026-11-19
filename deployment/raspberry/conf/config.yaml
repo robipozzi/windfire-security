@@ -1,4 +1,4 @@
-# SSH/sudo user; also owns the shared truststores under its home folder
+# SSH/sudo user; stages the application under its home folder
 user: pi
 group: pi
 # System user and group the service runs as: no login shell, no supplementary groups (not in sudo)
@@ -6,12 +6,10 @@ service_user: windfire-security
 service_group: windfire-security
 local_home_dir: "{{ lookup('env', 'HOME') }}"
 local_ssl_dir: "{{ local_home_dir }}/opt/windfire/ssl"
-local_truststore_dir: "{{ local_ssl_dir }}/truststore"
 local_certs_dir: "{{ local_ssl_dir }}/certs/raspberry"
 remote_home_dir: /home/pi
-remote_ssl_dir: "{{ remote_home_dir }}/opt/windfire/ssl"
-remote_keystore_dir: "{{ remote_ssl_dir }}/keystore"
-remote_truststore_dir: "{{ remote_ssl_dir }}/truststore"
+# Shared, root-owned CA folder installed by windfire-raspberry (configure-windfire-infra.sh --tags windfire_ca): this playbook only checks it
+windfire_ca_dir: /etc/windfire/ca
 windfire_ca_root_certificate: "WindfireRootCA.crt"
 windfire_server_certificate: "windfire-security.crt"
 windfire_server_key: "windfire-security.key"
@@ -20,8 +18,6 @@ venv_path: "{{ remote_windfire_security_dir }}/server/windfire-security-server"
 python_interpreter: "python3"
 install_python_modules_script: installPrereqs.sh
 process: authServer.py
-local_keycloak_truststore_dir: "{{ local_home_dir }}/opt/keycloak/ssl/truststore"
-remote_keycloak_truststore_dir: "{{ remote_home_dir }}/opt/keycloak/ssl/truststore"
 keycloak_ca_root_certificate: "WindfireKeycloakRootCA.crt"
 # Per-service Keycloak realm/client_id/client_secret map: encrypted on the Pi with systemd-creds, never copied in plaintext
 local_service_config_file: "{{ playbook_dir }}/../../server/config/service_config.json"

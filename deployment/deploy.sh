@@ -72,8 +72,6 @@ deployToRaspberry()
     echo -e "${BLU}Deploy Windfire Security component to Raspberry Pi ...${RESET}"
     echo
     checkPrerequisites
-    checkRootCA
-    checkKeycloakRootCA
     checkSSLCertificates
     checkServiceConfig
     collectConfig
@@ -104,30 +102,6 @@ checkPrerequisites()
         exit 1
     fi
     echo -e "${GREEN}Ansible SSH key found: $ANSIBLE_SSH_KEY${RESET}"
-    echo
-}
-
-checkRootCA()
-{
-    printBanner "Check Windfire Root CA"
-    if [ ! -f "$WINDFIRE_DEFAULT_TRUSTSTORE_DIR/$WINDFIRE_ROOT_CA_CERTIFICATE" ]; then
-        echo -e "${RED}Error: Windfire Root CA $WINDFIRE_DEFAULT_TRUSTSTORE_DIR/$WINDFIRE_ROOT_CA_CERTIFICATE not found${RESET}"
-        echo -e "${RED}Create it with ssl/createRootCA.sh first${RESET}"
-        exit 1
-    fi
-    echo -e "${GREEN}Windfire Root CA found in $WINDFIRE_DEFAULT_TRUSTSTORE_DIR${RESET}"
-    echo
-}
-
-checkKeycloakRootCA()
-{
-    printBanner "Check Windfire Keycloak Root CA"
-    if [ ! -f "$KEYCLOAK_DEFAULT_TRUSTSTORE_DIR/$KEYCLOAK_ROOT_CA_CERTIFICATE" ]; then
-        echo -e "${RED}Error: Windfire Keycloak Root CA $KEYCLOAK_DEFAULT_TRUSTSTORE_DIR/$KEYCLOAK_ROOT_CA_CERTIFICATE not found${RESET}"
-        echo -e "${RED}Create it with keycloak/security/setupTLS.sh first${RESET}"
-        exit 1
-    fi
-    echo -e "${GREEN}Windfire Keycloak Root CA found in $KEYCLOAK_DEFAULT_TRUSTSTORE_DIR${RESET}"
     echo
 }
 
@@ -230,11 +204,11 @@ printHelp() {
     echo
     echo -e "${BOLD}WHAT THIS SCRIPT DOES:${RESET}"
     echo -e "1. Check that ansible-playbook and the Ansible SSH key are available"
-    echo -e "2. Check that the Windfire Root CA and the Windfire Keycloak Root CA exist"
-    echo -e "3. Check the production server certificate and key (generated if missing)"
-    echo -e "4. Check server/config/service_config.json"
-    echo -e "5. Ask for the Keycloak server URL"
-    echo -e "6. Run the Ansible playbook (asks for the sudo password of user pi on the Raspberry):"
+    echo -e "2. Check the production server certificate and key (generated if missing)"
+    echo -e "3. Check server/config/service_config.json"
+    echo -e "4. Ask for the Keycloak server URL"
+    echo -e "5. Run the Ansible playbook (asks for the sudo password of user pi on the Raspberry):"
+    echo -e "   check the shared CA certificates in /etc/windfire/ca (installed by windfire-raspberry's configure-windfire-infra.sh --tags windfire_ca),"
     echo -e "   deploy, encrypt service_config.json with systemd-creds, start the systemd service and health-check it"
     echo
     echo -e "${BOLD}EXIT CODES:${RESET}"
