@@ -1,5 +1,9 @@
+# SSH/sudo user; also owns the shared truststores under its home folder
 user: pi
 group: pi
+# System user and group the service runs as: no login shell, no supplementary groups (not in sudo)
+service_user: windfire-security
+service_group: windfire-security
 local_home_dir: "{{ lookup('env', 'HOME') }}"
 local_ssl_dir: "{{ local_home_dir }}/opt/windfire/ssl"
 local_truststore_dir: "{{ local_ssl_dir }}/truststore"

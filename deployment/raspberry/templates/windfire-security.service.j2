@@ -5,7 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User={{ user }}
+User={{ service_user }}
+Group={{ service_group }}
 WorkingDirectory={{ remote_windfire_security_dir }}/server
 Environment=LOG_LEVEL={{ log_level }}
 LoadCredentialEncrypted={{ service_config_credential }}:/etc/credstore.encrypted/{{ service_config_credential }}
@@ -18,6 +19,8 @@ StandardOutput=append:{{ remote_windfire_security_dir }}/server/logs/{{ service_
 StandardError=append:{{ remote_windfire_security_dir }}/server/logs/{{ service_name }}.log
 # Sandbox: the whole filesystem is read-only to the service (ProtectSystem=strict, ProtectHome=read-only)
 # except ReadWritePaths, the logs directory the app writes to.
+# ProtectHome stays read-only, not yes: the application folder is under {{ remote_home_dir }}
+# (the service user reaches it through a traverse-only ACL on {{ remote_home_dir }}).
 # No MemoryDenyWriteExecute: it breaks JIT runtimes (JVM, Node/V8) and some Python wheels.
 NoNewPrivileges=yes
 PrivateTmp=yes

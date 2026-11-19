@@ -2,6 +2,8 @@
 # Software installation and configuration
 # The play runs with become (root): tasks that write under the pi home folder either set owner/group
 # or run as the connecting user with "become: false", so parent folders are never created as root.
+# The application is staged as pi (rsync, venv and pip run as the connecting user), then the whole
+# application folder is handed over to the service user before the service starts.
 - hosts: security_service
   remote_user: "{{ user }}"
   become: yes
@@ -34,6 +36,34 @@
       ansible.builtin.fail:
         msg: "{{ local_service_config_file }} not found: copy server/config/service_config.json_PLACEHOLDER and set the real values"
       when: not local_service_config.stat.exists
+
+    # Task 0b: Create the system user the service runs as
+    - name: Create "{{ service_group }}" system group
+      ansible.builtin.group:
+        name: "{{ service_group }}"
+        system: yes
+        state: present
+
+    - name: Create "{{ service_user }}" system user (no login shell, no supplementary groups)
+      ansible.builtin.user:
+        name: "{{ service_user }}"
+        group: "{{ service_group }}"
+        groups: ""
+        append: no
+        system: yes
+        shell: /usr/sbin/nologin
+        home: /nonexistent
+        create_home: no
+        state: present
+
+    # {{ remote_home_dir }} is 0700: let the service user traverse it (no read/list) to reach the application folder
+    - name: Allow "{{ service_user }}" to traverse {{ remote_home_dir }}
+      ansible.posix.acl:
+        path: "{{ remote_home_dir }}"
+        entity: "{{ service_user }}"
+        etype: user
+        permissions: x
+        state: present
 
     # Task 1: Stop Windfire Security service on remote server
     - name: Stop "{{ service_name }}" systemd service if running
@@ -122,26 +152,35 @@
       ansible.builtin.template:
         src: "{{ src_dir }}/templates/windfire-security.env.j2"
         dest: "{{ remote_windfire_security_dir }}/server/.env"
-        owner: "{{ user }}"
-        group: "{{ group }}"
+        owner: "{{ service_user }}"
+        group: "{{ service_group }}"
         mode: "0600"
 
-    # Task 5: Copy TLS material to remote server
+    # Task 5: Copy TLS material to remote server: the service user's own copy of the certificate, key
+    # and Windfire Keycloak Root CA (KEYCLOAK_CA_CERT_PATH in server/.env)
     - name: Copy certificate {{ windfire_server_certificate }} from {{ local_certs_dir }} to "{{ remote_windfire_security_dir }}/server/ssl" directory on remote server
       copy:
         src: "{{ local_certs_dir }}/{{ windfire_server_certificate }}"
         dest: "{{ remote_windfire_security_dir }}/server/ssl/{{ windfire_server_certificate }}"
-        owner: "{{ user }}"
-        group: "{{ group }}"
-        mode: "0644"
+        owner: "{{ service_user }}"
+        group: "{{ service_group }}"
+        mode: "0444"
 
     - name: Copy key {{ windfire_server_key }} from {{ local_certs_dir }} to "{{ remote_windfire_security_dir }}/server/ssl" directory on remote server
       copy:
         src: "{{ local_certs_dir }}/{{ windfire_server_key }}"
         dest: "{{ remote_windfire_security_dir }}/server/ssl/{{ windfire_server_key }}"
-        owner: "{{ user }}"
-        group: "{{ group }}"
-        mode: "0600"
+        owner: "{{ service_user }}"
+        group: "{{ service_group }}"
+        mode: "0400"
+
+    - name: Copy {{ keycloak_ca_root_certificate }} from {{ local_keycloak_truststore_dir }} to "{{ remote_windfire_security_dir }}/server/ssl" directory on remote server
+      copy:
+        src: "{{ local_keycloak_truststore_dir }}/{{ keycloak_ca_root_certificate }}"
+        dest: "{{ remote_windfire_security_dir }}/server/ssl/{{ keycloak_ca_root_certificate }}"
+        owner: "{{ service_user }}"
+        group: "{{ service_group }}"
+        mode: "0444"
 
     - name: Ensure remote truststore directory {{ remote_truststore_dir }} exists
       file:
@@ -158,7 +197,7 @@
         group: "{{ group }}"
         mode: "0644"
 
-    # Windfire Keycloak Root CA certificate (KEYCLOAK_CA_CERT_PATH in server/.env)
+    # Shared Windfire Keycloak Root CA truststore (the service itself uses its own copy in server/ssl)
     - name: Ensure remote Keycloak truststore directory {{ remote_keycloak_truststore_dir }} exists
       file:
         path: "{{ remote_keycloak_truststore_dir }}"
@@ -221,6 +260,23 @@
     - name: Display installed packages
       debug:
         var: pip_list.stdout_lines
+
+    # Task 7b: Hand the application folder over to the service user (owner/group only: file modes are kept)
+    - name: Change owner of "{{ remote_windfire_security_dir }}" and its contents to {{ service_user }}
+      ansible.builtin.file:
+        path: "{{ remote_windfire_security_dir }}"
+        state: directory
+        recurse: yes
+        owner: "{{ service_user }}"
+        group: "{{ service_group }}"
+
+    - name: Make "{{ remote_windfire_security_dir }}/server/ssl" accessible only by {{ service_user }}
+      ansible.builtin.file:
+        path: "{{ remote_windfire_security_dir }}/server/ssl"
+        state: directory
+        owner: "{{ service_user }}"
+        group: "{{ service_group }}"
+        mode: "0500"
 
     # Task 8: Encrypt the service configuration (Keycloak client secrets) at rest with systemd-creds
     # (plaintext never written to disk on the Pi)
