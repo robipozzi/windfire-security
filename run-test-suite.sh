@@ -49,6 +49,9 @@ main()
     if [ "$SCOPE" != "unit" ] && [ -z "$ENVIRONMENT" ]; then
         selectEnvironment
     fi
+    if [ "$SCOPE" != "unit" ]; then
+        remind_calendar_srv
+    fi
 
     setup_venv || exit 1
     mkdir -p "$REPORTS_DIR"
@@ -96,6 +99,17 @@ run_unit_tier()
     run_pytest unit "$TESTS_DIR/unit" unit
     UNIT_RESULT=$TIER_RESULT
     UNIT_REPORT=$TIER_REPORT
+    echo
+}
+
+# The live tests authenticate against windfire-calendar-srv (tests/environments.json)
+remind_calendar_srv()
+{
+    echo -e "${RED}Reminder: make sure windfire-calendar-srv is enabled before running the tests${RESET}"
+    # Wait for Enter only when there is a terminal to read from and -y was not given
+    if [ -t 0 ] && [ "$ASSUME_YES" != true ]; then
+        read -r -p "Press Enter to continue ..."
+    fi
     echo
 }
 
