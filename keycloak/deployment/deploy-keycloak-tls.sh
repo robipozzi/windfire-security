@@ -1,3 +1,4 @@
 cd "$(dirname "$0")" || exit 1
+source ../../common.sh
 export ANSIBLE_CONFIG=$PWD/raspberry/ansible.cfg
-ansible-playbook -K raspberry/keycloak-tls-deploy.yaml "$@"
+runWithAnsibleSshKey ansible-playbook -K raspberry/keycloak-tls-deploy.yaml "$@"

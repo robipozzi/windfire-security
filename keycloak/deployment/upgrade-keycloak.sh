@@ -19,4 +19,4 @@ if [[ ! "$UPGRADE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 fi
 
 echo -e "${BLU}Upgrading Keycloak on raspberry01 (inventory group identitymanager) to ${UPGRADE_VERSION} ...${RESET}"
-ansible-playbook -K raspberry/keycloak-upgrade.yaml -e keycloak_version="$UPGRADE_VERSION"
+runWithAnsibleSshKey ansible-playbook -K raspberry/keycloak-upgrade.yaml -e keycloak_version="$UPGRADE_VERSION"
