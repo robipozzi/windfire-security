@@ -20,4 +20,4 @@ if [[ "$1" != "-y" ]]; then
     fi
 fi
 
-ansible-playbook -K raspberry/keycloak-uninstall.yaml
+runWithAnsibleSshKey ansible-playbook -K raspberry/keycloak-uninstall.yaml

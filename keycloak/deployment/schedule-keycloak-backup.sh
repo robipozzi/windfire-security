@@ -46,7 +46,7 @@ if [[ "$ASSUME_YES" != true ]]; then
 fi
 
 # -K: sudo on raspberry01 requires the pi password
-if ! ansible-playbook -K raspberry/keycloak-backup-schedule.yaml -e keycloak_backup_schedule_state="$STATE"; then
+if ! runWithAnsibleSshKey ansible-playbook -K raspberry/keycloak-backup-schedule.yaml -e keycloak_backup_schedule_state="$STATE"; then
     echo -e "${RED}Failed, see the playbook output above${RESET}" >&2
     exit 1
 fi

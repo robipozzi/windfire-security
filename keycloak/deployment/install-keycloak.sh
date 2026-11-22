@@ -53,7 +53,7 @@ installRaspberry()
     done
     export WINDFIRE_KC_ADMIN_USERNAME WINDFIRE_KC_ADMIN_PASSWORD
     echo -e "${BLU}Installing Keycloak on raspberry01 (stops if Keycloak is already installed) ...${RESET}"
-    ANSIBLE_CONFIG=$PWD/raspberry/ansible.cfg ansible-playbook -K raspberry/keycloak-install.yaml
+    ANSIBLE_CONFIG=$PWD/raspberry/ansible.cfg runWithAnsibleSshKey ansible-playbook -K raspberry/keycloak-install.yaml
 }
 
 installLocalhost()
