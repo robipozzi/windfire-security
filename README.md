@@ -667,6 +667,7 @@ deployment/deploy.sh --help
 
 ### What you need before deploying
 * Ansible installed locally (`ansible-playbook` on `PATH`) and the SSH key `$HOME/.ssh/ansible_rsa`
+* if that key has a passphrase: the scripts load it into their own `ssh-agent` with `ssh-add`. On macOS they use Apple's `/usr/bin/ssh-add --apple-use-keychain`, so the passphrase is asked on the first run, saved in your login Keychain and read from there afterwards. Elsewhere it is asked on every run
 * the sudo password of user `pi` on the Pi: sudo is not passwordless, so every playbook run asks for it as `BECOME password` ([ansible.cfg](deployment/raspberry/ansible.cfg) sets `become_ask_pass`)
 * `rsync` both locally and on the Pi (used by the Ansible `synchronize` module)
 * on the Pi: Python 3 and systemd with `systemd-creds` (systemd 250 or later, e.g. Raspberry Pi OS Bookworm)

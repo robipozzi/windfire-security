@@ -337,4 +337,16 @@ setDeploymentPlatform()
             ;;
     esac
 }
+# Load the Ansible SSH key into the ssh-agent the deploy scripts start.
+# On macOS, Apple's ssh-add saves the key passphrase in the login Keychain the
+# first time and reads it from there afterwards, so it is asked only once.
+# Elsewhere (or with an ssh-add without the Apple flag) the passphrase is asked on every run.
+addAnsibleSshKey()
+{
+    if [[ "$(uname -s)" == "Darwin" && -x /usr/bin/ssh-add ]]; then
+        /usr/bin/ssh-add --apple-use-keychain "$ANSIBLE_SSH_KEY" && return 0
+        echo -e "${YELLOW}ssh-add --apple-use-keychain failed, retrying without the Keychain${RESET}"
+    fi
+    ssh-add "$ANSIBLE_SSH_KEY"
+}
 ###### Function section - END

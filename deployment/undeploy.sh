@@ -95,7 +95,7 @@ undeployFromRaspberry()
     confirmUndeploy
     eval "$(ssh-agent -s)" >/dev/null
     trap 'ssh-agent -k >/dev/null' EXIT
-    ssh-add "$ANSIBLE_SSH_KEY" || { echo -e "${RED}Error: ssh-add $ANSIBLE_SSH_KEY failed${RESET}"; exit 1; }
+    addAnsibleSshKey || { echo -e "${RED}Error: ssh-add $ANSIBLE_SSH_KEY failed${RESET}"; exit 1; }
     export ANSIBLE_CONFIG=$PWD/raspberry/ansible.cfg
     echo -e "${YELLOW}Ansible will ask for the BECOME password: the sudo password of user pi on the Raspberry${RESET}"
     if ansible-playbook raspberry/windfire-security-undeploy.yaml; then
