@@ -44,7 +44,7 @@ fi
 rm -f "$LAST_FETCH_FILE"
 FAILED=false
 echo -e "${BLU}Fetching the Keycloak backups from raspberry01 (inventory group identitymanager) to ${LOCAL_BACKUP_DIR} ...${RESET}"
-if ! ansible-playbook -K raspberry/keycloak-backup-fetch.yaml -e local_backup_dir="$LOCAL_BACKUP_DIR"; then
+if ! runWithAnsibleSshKey ansible-playbook -K raspberry/keycloak-backup-fetch.yaml -e local_backup_dir="$LOCAL_BACKUP_DIR"; then
     echo -e "${RED}Fetch failed, see the playbook output above: the archives fetched before the failure are encrypted now${RESET}" >&2
     FAILED=true
 fi

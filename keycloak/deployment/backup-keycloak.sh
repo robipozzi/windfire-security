@@ -56,7 +56,7 @@ fi
 # The playbook writes the Mac copy path here only once the copy is verified
 rm -f "$LAST_BACKUP_FILE"
 echo -e "${BLU}Backing up Keycloak ${BACKUP_VERSION} from raspberry01 (inventory group identitymanager) to ${LOCAL_BACKUP_DIR} ...${RESET}"
-if ! ansible-playbook -K raspberry/keycloak-backup.yaml -e keycloak_version="$BACKUP_VERSION" -e local_backup_dir="$LOCAL_BACKUP_DIR"; then
+if ! runWithAnsibleSshKey ansible-playbook -K raspberry/keycloak-backup.yaml -e keycloak_version="$BACKUP_VERSION" -e local_backup_dir="$LOCAL_BACKUP_DIR"; then
     echo -e "${RED}Backup failed, see the playbook output above${RESET}" >&2
     exit 1
 fi
