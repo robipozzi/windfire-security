@@ -420,7 +420,7 @@ restoreLocalhost()
 #############################################################
 runRestorePlaybook()
 {
-    ANSIBLE_CONFIG=$PWD/raspberry/ansible.cfg ansible-playbook -K raspberry/keycloak-restore.yaml "$@"
+    ANSIBLE_CONFIG=$PWD/raspberry/ansible.cfg runWithAnsibleSshKey ansible-playbook -K raspberry/keycloak-restore.yaml "$@"
 }
 
 cleanRaspberry()
