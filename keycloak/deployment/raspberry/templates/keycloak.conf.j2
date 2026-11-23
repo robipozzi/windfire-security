@@ -1,6 +1,17 @@
 # Managed by keycloak-install.yaml (Keycloak {{ keycloak_version }}), later changes by keycloak-tls-deploy.yaml and keycloak-upgrade.yaml
-# Hostname v2: full URL, also used as the issuer of every realm (https://{{ inventory_hostname }}:{{ keycloak_https_port }}/realms/<realm>)
-hostname=https://{{ inventory_hostname }}:{{ keycloak_https_port }}
+# Hostname v2: full URL, also used as the issuer of every realm ({{ keycloak_public_url }}/realms/<realm>)
+# except master when keycloak-tls-deploy.yaml pinned its Frontend URL to {{ keycloak_internal_url }}
+hostname={{ keycloak_public_url }}
+{% if keycloak_public_hostname | bool %}
+# Admin console stays on the internal URL
+hostname-admin={{ keycloak_internal_url }}
+# Back-end calls to the internal URL get internal endpoints, tokens keep the public issuer
+hostname-backchannel-dynamic=true
+# cloudflared forwards the client address in X-Forwarded-* headers
+proxy-headers=xforwarded
+# Only trusted from cloudflared, which connects from localhost
+proxy-trusted-addresses=127.0.0.1
+{% endif %}
 http-enabled=false
 https-port={{ keycloak_https_port }}
 https-certificate-file={{ keycloak_tls_dir }}/{{ keycloak_cert_name }}.crt

@@ -160,6 +160,9 @@ collectConfig()
     printBanner "Collect Keycloak configuration"
     KEYCLOAK_SERVER_URL=$(inputWithDefault "Keycloak server URL" "https://raspberry01:8443")
     export KEYCLOAK_SERVER_URL
+    # Issuer in Keycloak's tokens: its public hostname (keycloak_public_url) if set, otherwise the server URL
+    KEYCLOAK_ISSUER_URL=$(inputWithDefault "Keycloak issuer URL (public hostname)" "$KEYCLOAK_SERVER_URL")
+    export KEYCLOAK_ISSUER_URL
     echo
 }
 

@@ -298,3 +298,36 @@ def test_keycloak_config_endpoints_strip_trailing_slash(monkeypatch):
     config = KeycloakConfig(service=SERVICE)
     assert config.jwks_endpoint == JWKS_URL
     assert config.token_endpoint == TOKEN_URL
+
+
+# ---------------------------------------------------------------------------
+# KEYCLOAK_ISSUER_URL (Keycloak behind a public hostname): only the iss check uses it
+# ---------------------------------------------------------------------------
+PUBLIC_URL = "https://auth.test"
+PUBLIC_ISSUER = f"{PUBLIC_URL}/realms/{REALM}"
+
+
+def test_issuer_defaults_to_server_url():
+    assert KeycloakConfig(service=SERVICE).issuer == ISSUER
+
+
+def test_issuer_url_changes_only_the_issuer(monkeypatch):
+    monkeypatch.setenv("KEYCLOAK_ISSUER_URL", PUBLIC_URL + "/")
+    config = KeycloakConfig(service=SERVICE)
+    assert config.issuer == PUBLIC_ISSUER
+    assert config.jwks_endpoint == JWKS_URL
+    assert config.token_endpoint == TOKEN_URL
+    assert config.userinfo_endpoint == f"{ISSUER}/protocol/openid-connect/userinfo"
+
+
+def test_public_issuer_token_is_accepted_with_jwks_from_server_url(jwks_server, signing_key, monkeypatch):
+    monkeypatch.setenv("KEYCLOAK_ISSUER_URL", PUBLIC_URL)
+    decoded = verify_token(mint(signing_key, iss=PUBLIC_ISSUER), service=SERVICE)
+    assert decoded["iss"] == PUBLIC_ISSUER
+    assert jwks_server["calls"][0][0] == JWKS_URL
+
+
+def test_server_url_issuer_is_rejected_when_issuer_url_is_set(jwks_server, signing_key, monkeypatch):
+    monkeypatch.setenv("KEYCLOAK_ISSUER_URL", PUBLIC_URL)
+    with pytest.raises(KeycloakAuthError, match="issuer"):
+        verify_token(mint(signing_key), service=SERVICE)

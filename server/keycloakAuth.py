@@ -29,9 +29,13 @@ class KeycloakConfig:
         self,
         server_url: str = None,
         service: str = None,
+        issuer_url: str = None,
     ):    
         logger.debug(f"KeycloakConfig: Initializing configuration")
         self.server_url = server_url or settings.get('KEYCLOAK_SERVER_URL')
+        # Issuer base URL in Keycloak's tokens (its public hostname), used only for the iss check;
+        # unset or empty = server_url. The token, userinfo and JWKS calls always use server_url
+        self.issuer_url = issuer_url or settings.get('KEYCLOAK_ISSUER_URL') or self.server_url
         self.service = service
         servicecfg = None
         logger.debug(f"self.service is set to: {self.service}")
@@ -45,6 +49,8 @@ class KeycloakConfig:
         
         # Normalize server URL
         self.server_url = self.server_url.rstrip('/')
+        self.issuer_url = self.issuer_url.rstrip('/')
+        self.issuer = f"{self.issuer_url}/realms/{self.realm}"
         
         # Token endpoints
         self.token_endpoint = f"{self.server_url}/realms/{self.realm}/protocol/openid-connect/token"
@@ -67,6 +73,7 @@ class KeycloakConfig:
 
         logger.debug(f"KeycloakConfig: ")
         logger.debug(f"     server_url: {self.server_url}")
+        logger.debug(f"     issuer: {self.issuer}")
         logger.debug(f"     service: {self.service}")
         logger.debug(f"     realm: {self.realm}")
         logger.debug(f"     client_id: {self.client_id}")
@@ -427,13 +434,12 @@ class KeycloakAuth:
                 raise KeycloakAuthError("Could not convert JWK to public key")
             
             # Decode and verify token: signature, audience, issuer and required claims are all enforced
-            issuer = f"{self.config.server_url}/realms/{self.config.realm}"
             decoded_token = jwt.decode(
                 token,
                 public_key,
                 algorithms=['RS256'],
                 audience=self.config.client_id,
-                issuer=issuer,
+                issuer=self.config.issuer,
                 options={
                     "verify_signature": True,
                     "verify_aud": True,
@@ -453,7 +459,7 @@ class KeycloakAuth:
             logger.error(f"Token audience mismatch. Expected: {self.config.client_id}")
             raise KeycloakAuthError("Invalid token audience")
         except jwt.InvalidIssuerError:
-            logger.error(f"Token issuer mismatch. Expected: {self.config.server_url}/realms/{self.config.realm}")
+            logger.error(f"Token issuer mismatch. Expected: {self.config.issuer}")
             raise KeycloakAuthError("Invalid token issuer")
         except jwt.InvalidTokenError as e:
             logger.error(f"Token verification failed: {str(e)}")
