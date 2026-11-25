@@ -317,12 +317,31 @@
                 body:
                   grant_type: password
                   client_id: admin-cli
-                  username: "{{ lookup('env', 'WINDFIRE_KC_ADMIN_USERNAME') | default(kc_admin_username_prompt.user_input | default(''), true) }}"
+                  username: "{{ lookup('env', 'WINDFIRE_KC_ADMIN_USERNAME') | default(kc_admin_username_prompt.user_input | default(''), true) | trim }}"
                   password: "{{ lookup('env', 'WINDFIRE_KC_ADMIN_PASSWORD') | default(kc_admin_password_prompt.user_input | default(''), true) }}"
                 ca_path: "{{ local_root_ca_cert }}"
                 validate_certs: yes
+                # no_log hides the whole result: accept Keycloak's refusals here and report error/error_description
+                # (never a secret) in the next task, instead of a censored "HTTP Error 400"
+                status_code: [200, 400, 401, 403]
               register: kc_admin_token
               no_log: true
+            - name: Fail if Keycloak refused the admin login
+              assert:
+                that: kc_admin_token.status == 200
+                fail_msg: >-
+                  Keycloak refused the admin-cli password login on {{ keycloak_internal_url }}/realms/master:
+                  HTTP {{ kc_admin_token.status }}, error={{ kc_admin_token.json.error | default('?') }},
+                  error_description={{ kc_admin_token.json.error_description | default('?') }}.
+                  {{ kc_admin_hints[kc_admin_token.json.error_description | default('')] | default('') }}
+                  Details: sudo journalctl -u {{ keycloak_service }} | grep LOGIN_ERROR (on {{ inventory_hostname }})
+                quiet: true
+              vars:
+                kc_admin_hints:
+                  "Invalid user credentials": "Wrong username or password (or the user has OTP, or brute-force detection locked it)."
+                  "Account is not fully set up": "The user has pending required actions (e.g. Update Password, Verify Profile: missing email/first/last name): log in once to the admin console, or clear them in Users > <user> > Required user actions."
+                  "Account disabled": "Enable the user in the master realm (Users > <user> > Enabled)."
+                  "Client not allowed for direct access grants": "Turn on Direct access grants for the admin-cli client of the master realm."
             - name: Read the master realm attributes
               uri:
                 url: "{{ keycloak_internal_url }}/admin/realms/master"
@@ -421,7 +440,11 @@
             daemon_reload: yes
         - name: Fail after rollback
           fail:
-            msg: "Keycloak did not start with the new certificate, previous configuration restored. Check: journalctl -u {{ keycloak_service }}"
+            # The block also pins the master Frontend URL and checks the issuers: name the task that failed, not only the start
+            msg: >-
+              Task "{{ ansible_failed_task.name | default('unknown') }}" failed{{ (ansible_failed_result.msg | default('') | length > 0) | ternary(': ' ~ ansible_failed_result.msg | default(''), '') }}.
+              Previous certificate, key, keycloak.conf and systemd unit restored and Keycloak restarted.
+              Check the error above and: journalctl -u {{ keycloak_service }}
     ###########################################################
     ##### Backup old server.crt.pem and server.key.pem    #####
     ###########################################################
