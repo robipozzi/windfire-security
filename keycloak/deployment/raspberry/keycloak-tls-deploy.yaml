@@ -101,6 +101,45 @@
         that: keycloak_conf_file.stat.exists
         fail_msg: "{{ keycloak_conf }} not found on {{ inventory_hostname }}"
         quiet: true
+    # With a public URL the master realm Frontend URL is pinned after the restart, through the admin REST API: check the
+    # admin credentials now, while nothing is changed, so a wrong password does not roll back the whole deployment.
+    # Only when Keycloak answers (not on a fresh install) and the pin may be needed: keycloak.conf hostname is not the
+    # public URL yet, or the master issuer is not the internal URL
+    - name: Read the current hostname in "{{ keycloak_conf }}"
+      command: "grep -E '^[[:space:]]*hostname[[:space:]]*=' {{ keycloak_conf }}"
+      register: kc_conf_hostname_before
+      changed_when: false
+      failed_when: kc_conf_hostname_before.rc > 1
+      check_mode: false
+      when: keycloak_public_hostname | bool
+    - name: Read master realm issuer over "{{ keycloak_internal_url }}" before any change
+      uri:
+        url: "{{ keycloak_internal_url }}/realms/master/.well-known/openid-configuration"
+        ca_path: "{{ local_root_ca_cert }}"
+        validate_certs: yes
+        return_content: yes
+      register: master_discovery_before
+      failed_when: false
+      check_mode: false
+      delegate_to: localhost
+      become: no
+      run_once: true
+      when: keycloak_public_hostname | bool
+    - name: Check the Keycloak admin credentials before any change
+      when:
+        - keycloak_public_hostname | bool
+        - master_discovery_before.status | default(0) == 200
+        - (kc_conf_hostname_before.stdout | default('') | regex_replace('^\\s*hostname\\s*=\\s*', '') | trim) != keycloak_public_url
+          or master_discovery_before.json.issuer | default('') != keycloak_internal_url ~ '/realms/master'
+        - not ansible_check_mode
+      delegate_to: localhost
+      become: no
+      run_once: true
+      block:
+        - name: Ask for the Keycloak admin credentials
+          import_tasks: tasks/keycloak-admin-credentials.yaml
+        - name: Get an admin token
+          import_tasks: tasks/keycloak-admin-token.yaml
     - name: Check "{{ keycloak_tls_group }}" group exists
       getent:
         database: group
@@ -298,50 +337,12 @@
           become: no
           run_once: true
           block:
-            - name: Ask for the Keycloak admin username (WINDFIRE_KC_ADMIN_USERNAME not set)
-              pause:
-                prompt: "Keycloak master realm admin username, to set the master realm Frontend URL"
-              register: kc_admin_username_prompt
-              when: lookup('env', 'WINDFIRE_KC_ADMIN_USERNAME') | length == 0
-            - name: Ask for the Keycloak admin password (WINDFIRE_KC_ADMIN_PASSWORD not set)
-              pause:
-                prompt: "Keycloak master realm admin password"
-                echo: no
-              register: kc_admin_password_prompt
-              when: lookup('env', 'WINDFIRE_KC_ADMIN_PASSWORD') | length == 0
-            - name: Get an admin token from "{{ keycloak_internal_url }}"
-              uri:
-                url: "{{ keycloak_internal_url }}/realms/master/protocol/openid-connect/token"
-                method: POST
-                body_format: form-urlencoded
-                body:
-                  grant_type: password
-                  client_id: admin-cli
-                  username: "{{ lookup('env', 'WINDFIRE_KC_ADMIN_USERNAME') | default(kc_admin_username_prompt.user_input | default(''), true) | trim }}"
-                  password: "{{ lookup('env', 'WINDFIRE_KC_ADMIN_PASSWORD') | default(kc_admin_password_prompt.user_input | default(''), true) }}"
-                ca_path: "{{ local_root_ca_cert }}"
-                validate_certs: yes
-                # no_log hides the whole result: accept Keycloak's refusals here and report error/error_description
-                # (never a secret) in the next task, instead of a censored "HTTP Error 400"
-                status_code: [200, 400, 401, 403]
-              register: kc_admin_token
-              no_log: true
-            - name: Fail if Keycloak refused the admin login
-              assert:
-                that: kc_admin_token.status == 200
-                fail_msg: >-
-                  Keycloak refused the admin-cli password login on {{ keycloak_internal_url }}/realms/master:
-                  HTTP {{ kc_admin_token.status }}, error={{ kc_admin_token.json.error | default('?') }},
-                  error_description={{ kc_admin_token.json.error_description | default('?') }}.
-                  {{ kc_admin_hints[kc_admin_token.json.error_description | default('')] | default('') }}
-                  Details: sudo journalctl -u {{ keycloak_service }} | grep LOGIN_ERROR (on {{ inventory_hostname }})
-                quiet: true
-              vars:
-                kc_admin_hints:
-                  "Invalid user credentials": "Wrong username or password (Keycloak 26.8 answers 400 for it, older 26.x 401), or the user has OTP, or brute-force detection locked it."
-                  "Account is not fully set up": "The user has pending required actions (e.g. Update Password, Verify Profile: missing email/first/last name): log in once to the admin console, or clear them in Users > <user> > Required user actions."
-                  "Account disabled": "Enable the user in the master realm (Users > <user> > Enabled)."
-                  "Client not allowed for direct access grants": "Turn on Direct access grants for the admin-cli client of the master realm."
+            # Asked in pre-flight when Keycloak answered and the switch to the public URL was coming: ask here otherwise
+            - name: Ask for the Keycloak admin credentials (not asked in pre-flight)
+              import_tasks: tasks/keycloak-admin-credentials.yaml
+              when: kc_admin_username is not defined
+            - name: Get an admin token
+              import_tasks: tasks/keycloak-admin-token.yaml
             - name: Read the master realm attributes
               uri:
                 url: "{{ keycloak_internal_url }}/admin/realms/master"
@@ -418,11 +419,16 @@
             src: "{{ item.backup }}"
             dest: "{{ item.dest }}"
             remote_src: yes
+            # copy with remote_src writes root:root: set the owner, group and mode back, or the keycloak user
+            # cannot read keycloak.conf (or the key) and the restarted unit crash-loops with AccessDeniedException
+            owner: "{{ item.owner }}"
+            group: "{{ item.group }}"
+            mode: "{{ item.mode }}"
           loop:
-            - { backup: "{{ tls_cert_copy.backup_file | default('') }}", dest: "{{ remote_server_cert }}" }
-            - { backup: "{{ tls_key_copy.backup_file | default('') }}", dest: "{{ remote_server_key }}" }
-            - { backup: "{{ kc_conf_backup }}", dest: "{{ keycloak_conf }}" }
-            - { backup: "{{ keycloak_unit.backup_file | default('') }}", dest: "/etc/systemd/system/{{ keycloak_service }}.service" }
+            - { backup: "{{ tls_cert_copy.backup_file | default('') }}", dest: "{{ remote_server_cert }}", owner: "{{ keycloak_tls_owner }}", group: "{{ keycloak_tls_group }}", mode: "0640" }
+            - { backup: "{{ tls_key_copy.backup_file | default('') }}", dest: "{{ remote_server_key }}", owner: "{{ keycloak_tls_owner }}", group: "{{ keycloak_tls_group }}", mode: "0640" }
+            - { backup: "{{ kc_conf_backup }}", dest: "{{ keycloak_conf }}", owner: "{{ keycloak_conf_file.stat.pw_name }}", group: "{{ keycloak_conf_file.stat.gr_name }}", mode: "{{ keycloak_conf_file.stat.mode }}" }
+            - { backup: "{{ keycloak_unit.backup_file | default('') }}", dest: "/etc/systemd/system/{{ keycloak_service }}.service", owner: root, group: root, mode: "0644" }
           loop_control:
             label: "{{ item.dest }}"
           when: item.backup | length > 0
