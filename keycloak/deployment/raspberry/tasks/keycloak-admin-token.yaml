@@ -1,23 +1,59 @@
 ---
-# Get a master realm admin token as admin-cli with kc_admin_username/kc_admin_password into kc_admin_token,
-# fail with Keycloak's error and a hint otherwise. Imported by keycloak-tls-deploy.yaml (pre-flight and Frontend URL pin),
-# which runs it on the controller (delegate_to: localhost, become: no, run_once)
-- name: Get an admin token from "{{ keycloak_internal_url }}"
+# Get a master realm admin token as admin-cli into kc_admin_token, or fail with Keycloak's error and a hint.
+# Imported by keycloak-tls-deploy.yaml (pre-flight and Frontend URL pin), which runs it on the controller
+# (delegate_to: localhost, become: no, run_once).
+# - With a refresh token from an earlier login of the same run (pre-flight), refresh it first: no new OTP code.
+#   User sessions are persisted in the database (Keycloak 26), so it survives the restart.
+# - Otherwise, or if the refresh is refused, log in with kc_admin_username/kc_admin_password plus an OTP code (totp),
+#   asked every time because a code lasts about 30 seconds: with 2FA, a direct grant without totp fails with
+#   "Invalid user credentials", exactly like a wrong password. Enter sends no code (user without 2FA).
+# no_log hides the whole result of the token requests: they accept Keycloak's refusals, and the assert reports
+# error/error_description (never a secret) instead of a censored "HTTP Error 400"
+- name: Refresh the admin token from the earlier login (no new OTP code needed)
   uri:
     url: "{{ keycloak_internal_url }}/realms/master/protocol/openid-connect/token"
     method: POST
     body_format: form-urlencoded
     body:
+      grant_type: refresh_token
+      client_id: admin-cli
+      refresh_token: "{{ kc_admin_refresh_token }}"
+    ca_path: "{{ local_root_ca_cert }}"
+    validate_certs: yes
+    status_code: [200, 400, 401, 403]
+  register: kc_admin_refresh
+  no_log: true
+  when: kc_admin_refresh_token is defined
+- name: Decide if a password login is needed
+  set_fact:
+    kc_admin_need_login: "{{ kc_admin_refresh is skipped or kc_admin_refresh.status | default(0) != 200 }}"
+- name: Ask for the Keycloak admin OTP code
+  pause:
+    prompt: "Keycloak master realm admin OTP code from the authenticator app (press Enter if the user has no 2FA)"
+  register: kc_admin_otp_prompt
+  when: kc_admin_need_login | bool
+- name: Get an admin token from "{{ keycloak_internal_url }}"
+  uri:
+    url: "{{ keycloak_internal_url }}/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body: "{{ kc_admin_login_body | combine({'totp': kc_admin_otp} if kc_admin_otp | length > 0 else {}) }}"
+    ca_path: "{{ local_root_ca_cert }}"
+    validate_certs: yes
+    status_code: [200, 400, 401, 403]
+  vars:
+    kc_admin_otp: "{{ kc_admin_otp_prompt.user_input | default('') | trim }}"
+    kc_admin_login_body:
       grant_type: password
       client_id: admin-cli
       username: "{{ kc_admin_username }}"
       password: "{{ kc_admin_password }}"
-    ca_path: "{{ local_root_ca_cert }}"
-    validate_certs: yes
-    # no_log hides the whole result: accept Keycloak's refusals here and report error/error_description
-    # (never a secret) in the next task, instead of a censored "HTTP Error 400"
-    status_code: [200, 400, 401, 403]
-  register: kc_admin_token
+  register: kc_admin_login
+  no_log: true
+  when: kc_admin_need_login | bool
+- name: Keep the admin token
+  set_fact:
+    kc_admin_token: "{{ (kc_admin_need_login | bool) | ternary(kc_admin_login, kc_admin_refresh) }}"
   no_log: true
 - name: Fail if Keycloak refused the admin login
   assert:
@@ -31,7 +67,12 @@
     quiet: true
   vars:
     kc_admin_hints:
-      "Invalid user credentials": "Wrong username or password (Keycloak 26.8 answers 400 for it, older 26.x 401), or the user has OTP, or brute-force detection locked it."
+      "Invalid user credentials": "Wrong username, password or OTP code (with 2FA the code is required and lasts about 30 seconds), or brute-force detection locked the user. Keycloak 26.8 answers 400 for it, older 26.x 401."
       "Account is not fully set up": "The user has pending required actions (e.g. Update Password, Verify Profile: missing email/first/last name): log in once to the admin console, or clear them in Users > <user> > Required user actions."
       "Account disabled": "Enable the user in the master realm (Users > <user> > Enabled)."
       "Client not allowed for direct access grants": "Turn on Direct access grants for the admin-cli client of the master realm."
+- name: Keep the refresh token for the next admin token of this run
+  set_fact:
+    kc_admin_refresh_token: "{{ kc_admin_token.json.refresh_token }}"
+  no_log: true
+  when: kc_admin_token.json.refresh_token is defined
