@@ -199,13 +199,16 @@
       assert:
         that:
           - dev_login_page.status == 200
-          - dev_login_page.content is search('action="' ~ (dev_issuer | regex_escape) ~ '/login-actions/')
+          # Keycloak writes the action relative (/realms/...) when the Frontend URL is the origin the page was
+          # requested on, absolute otherwise: either way it must not leave keycloak_internal_url
+          - dev_login_page.content is search('action="(' ~ (keycloak_internal_url | regex_escape) ~ ')?/realms/' ~ (keycloak_dev_realm | regex_escape) ~ '/login-actions/')
         fail_msg: >-
           {{ (dev_login_page.status == 400) | ternary(
           'Keycloak refused the account-console redirect URI (HTTP 400, Invalid parameter: redirect_uri): the built-in
           clients still point at /realms/' ~ keycloak_dev_source_realm ~ '/. A realm created before the path rewrite in
           filter_plugins/keycloak_realm.py has this problem: run create-dev-realm.sh --remove, then create-dev-realm.sh.',
-          'The ' ~ keycloak_dev_realm ~ ' login form does not post to ' ~ dev_issuer ~ '/login-actions/') }}
+          'The ' ~ keycloak_dev_realm ~ ' login form does not post to ' ~ dev_issuer ~ '/login-actions/ (form action: '
+          ~ (dev_login_page.content | regex_search('action="[^"]*"') | default('none found', true)) ~ ')') }}
         quiet: true
       run_once: true
     - name: Summary
