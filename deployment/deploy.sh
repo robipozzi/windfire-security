@@ -2,6 +2,9 @@
 cd "$(dirname "$0")" || exit 1
 source ../common.sh
 
+# Source of the default Keycloak issuer URL (keycloak_public_url)
+KEYCLOAK_TLS_CONFIG=../keycloak/deployment/raspberry/conf/keycloak-tls-config.yml
+
 # ***** Deploy script for Windfire Security component *****
 
 # ===== MAIN FUNCTION =====
@@ -160,6 +163,12 @@ collectConfig()
     printBanner "Collect Keycloak configuration"
     KEYCLOAK_SERVER_URL=$(inputWithDefault "Keycloak server URL" "https://raspberry01:8443")
     export KEYCLOAK_SERVER_URL
+    # Issuer in Keycloak's tokens: keycloak_public_url of the Keycloak TLS config, otherwise the server URL
+    local publicUrl
+    publicUrl=$(sed -n 's/^keycloak_public_url: *"\{0,1\}\([^"]*\)"\{0,1\} *$/\1/p' "$KEYCLOAK_TLS_CONFIG" 2>/dev/null)
+    [[ -z "$publicUrl" || "$publicUrl" == *"{{"* ]] && publicUrl=$KEYCLOAK_SERVER_URL
+    KEYCLOAK_ISSUER_URL=$(inputWithDefault "Keycloak issuer URL (public hostname)" "$publicUrl")
+    export KEYCLOAK_ISSUER_URL
     echo
 }
 

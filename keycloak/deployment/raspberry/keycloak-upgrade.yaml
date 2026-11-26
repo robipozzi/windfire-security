@@ -11,7 +11,9 @@
     dropin_file: "{{ dropin_dir }}/10-keycloak-version.conf"
     # Realm whose issuer must not change (a fresh install has no windfire realm yet: 404 skips the check)
     keycloak_issuer_realm: windfire
-    issuer_url: "https://{{ inventory_hostname }}:{{ keycloak_https_port }}/realms/{{ keycloak_issuer_realm }}/.well-known/openid-configuration"
+    issuer_url: "{{ keycloak_internal_url }}/realms/{{ keycloak_issuer_realm }}/.well-known/openid-configuration"
+    # Issuer the running Keycloak must already serve: the public URL (keycloak_public_url, default the internal URL)
+    expected_issuer: "{{ keycloak_public_url }}/realms/{{ keycloak_issuer_realm }}"
     # Free space needed on remote_directory besides 2x the current install (backup tgz + data/ copy): the new distribution
     keycloak_upgrade_extra_space_kb: 307200
     # keycloak.conf options removed in Keycloak 26 (hostname v1 and proxy=)
@@ -167,6 +169,12 @@
       debug:
         msg: "WARNING: realm {{ keycloak_issuer_realm }} not found (404), the issuer before/after check is skipped"
       when: old_issuer | length == 0
+    - name: Fail if {{ keycloak_issuer_realm }} realm issuer is not the expected public issuer
+      assert:
+        that: old_issuer == expected_issuer
+        fail_msg: "{{ keycloak_issuer_realm }} issuer is {{ old_issuer }}, expected {{ expected_issuer }}: run deploy-keycloak-tls.sh to apply keycloak_public_url, or fix keycloak_public_url in conf/keycloak-tls-config.yml"
+        quiet: true
+      when: old_issuer | length > 0
     ######################################################
     ##### Upgrade Keycloak, rolling back on failure  #####
     ######################################################

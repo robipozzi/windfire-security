@@ -22,6 +22,7 @@ class Settings():
         load_dotenv()
         logger.info(f"Configuration loaded successfully.")
         logger.info(f"  KEYCLOAK_SERVER_URL: {os.getenv('KEYCLOAK_SERVER_URL')}")
+        logger.info(f"  KEYCLOAK_ISSUER_URL: {os.getenv('KEYCLOAK_ISSUER_URL')}")
         logger.info(f"  ENFORCE_HTTPS: {os.getenv('ENFORCE_HTTPS')}")
         logger.info(f"  ALLOWED_HOSTS: {os.getenv('ALLOWED_HOSTS')}")
         logger.info(f"  ENABLE_API_DOCS: {os.getenv('ENABLE_API_DOCS')}")

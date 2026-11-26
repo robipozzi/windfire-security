@@ -702,6 +702,13 @@ tail -f ~/windfire-security/server/logs/windfire-security-server.log   # applica
 ```
 `server/stop-auth-server.sh` refuses to kill a server managed by systemd (systemd would just restart it): use `systemctl stop` instead.
 
+### Kill switch
+Windfire reaches the internet only through the Cloudflare Tunnel (`cloudflared`) on raspberry01. To take Windfire offline at once, stop it from your Mac:
+```bash
+ssh -t -i ~/.ssh/ansible_rsa pi@raspberry01 'sudo systemctl stop cloudflared'
+```
+`-t` lets sudo ask for the `pi` password. Cloudflare Access and DNS can stay as they are. To bring Windfire back online, run the same command with `start` instead of `stop`.
+
 ### What `undeploy.sh` does
 After a confirmation prompt (skipped with `-y`) and the `pi` sudo password, [windfire-security-undeploy.yaml](deployment/raspberry/windfire-security-undeploy.yaml) stops and disables the service, removes the unit file and the encrypted credential, and deletes `/home/pi/windfire-security`. The shared CA certificates in `/etc/windfire/ca` are left in place: windfire-raspberry owns them and other Windfire services use them.
 

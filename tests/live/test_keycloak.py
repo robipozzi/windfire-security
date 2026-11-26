@@ -20,7 +20,9 @@ def keycloak(env_cfg):
                     "or KEYCLOAK_SERVER_URL in server/.env")
     if not os.path.isfile(env_cfg["keycloak_ca"]):
         pytest.fail(f"Windfire Keycloak Root CA not found: {env_cfg['keycloak_ca']}")
-    return {"url": url, "realm_url": f"{url}/realms/{env_cfg['realm']}", "ca": env_cfg["keycloak_ca"]}
+    issuer_url = env_cfg.get("keycloak_issuer_url") or url
+    return {"url": url, "realm_url": f"{url}/realms/{env_cfg['realm']}",
+            "issuer": f"{issuer_url}/realms/{env_cfg['realm']}", "ca": env_cfg["keycloak_ca"]}
 
 
 @pytest.fixture(scope="module")
@@ -43,8 +45,12 @@ def test_discovery_document(discovery):
 
 
 def test_issuer_matches_server_configuration(discovery, keycloak):
-    # The server checks iss == {KEYCLOAK_SERVER_URL}/realms/{realm}: a hostname mismatch makes every /verify fail
-    assert discovery["issuer"] == keycloak["realm_url"]
+    # The server checks iss == {KEYCLOAK_ISSUER_URL or KEYCLOAK_SERVER_URL}/realms/{realm}: a hostname mismatch
+    # makes every /verify fail. Keycloak reached on its internal URL still issues tokens with its public hostname
+    assert discovery["issuer"] == keycloak["issuer"], (
+        f"Keycloak issues tokens for {discovery['issuer']}, the server expects {keycloak['issuer']}: "
+        "set keycloak_issuer_url in tests/environments.json (prod) or KEYCLOAK_ISSUER_URL in server/.env (dev) "
+        "to Keycloak's public URL")
 
 
 def test_jwks_has_rs256_signing_key(discovery, keycloak):
