@@ -11,11 +11,22 @@
     src_dir: "{{ playbook_dir }}"
     mode: u=rwx
     keycloak_server_url: "{{ lookup('env', 'KEYCLOAK_SERVER_URL') }}"
-    # Token issuer (Keycloak's public hostname), defaults to the server URL
-    keycloak_issuer_url: "{{ lookup('env', 'KEYCLOAK_ISSUER_URL') | default(keycloak_server_url, true) }}"
+    # Token issuer (Keycloak's public hostname), defaults to the server URL. While Windfire is LAN-only (recorded on
+    # the Pi by windfire-raspberry's switch-windfire-exposure.sh as ansible_local.windfire.exposure), Keycloak issues
+    # tokens with its internal URL, so the server URL is used whatever deploy.sh exported
+    windfire_exposure: "{{ ansible_local.windfire.exposure | default('public') }}"
+    requested_issuer_url: "{{ lookup('env', 'KEYCLOAK_ISSUER_URL') | default(keycloak_server_url, true) }}"
+    keycloak_issuer_url: "{{ keycloak_server_url if windfire_exposure == 'lan' else requested_issuer_url }}"
   vars_files:
     - "{{ src_dir }}/conf/config.yaml"
   tasks:
+    - name: Report that Windfire is LAN-only, so the issuer is the server URL
+      ansible.builtin.debug:
+        msg: >-
+          Windfire is LAN-only ({{ windfire_exposure }}, set by windfire-raspberry switch-windfire-exposure.sh):
+          KEYCLOAK_ISSUER_URL={{ keycloak_issuer_url }} instead of {{ requested_issuer_url }}
+      when: windfire_exposure == 'lan' and requested_issuer_url != keycloak_issuer_url
+
     #################################################################
     ##### Windfire Security server component deployment Section #####
     #################################################################
