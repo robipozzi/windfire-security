@@ -1,10 +1,11 @@
 {
-  "_doc": "Targets of the live tests (no secrets). host null = environment not configured yet, its live tests are skipped. keycloak_url null = read KEYCLOAK_SERVER_URL from server/.env (dev only: the local server's own Keycloak). WINDFIRE_SECURITY_HOST / WINDFIRE_SECURITY_PORT / WINDFIRE_TEST_KEYCLOAK_URL override these values.",
+  "_doc": "Targets of the live tests (no secrets). host null = environment not configured yet, its live tests are skipped. keycloak_url null = read KEYCLOAK_SERVER_URL from server/.env (dev only: the local server's own Keycloak). keycloak_issuer_url = the server's KEYCLOAK_ISSUER_URL, Keycloak's public hostname in the token issuer; null = KEYCLOAK_ISSUER_URL from server/.env, falling back to keycloak_url when that is empty. WINDFIRE_SECURITY_HOST / WINDFIRE_SECURITY_PORT / WINDFIRE_TEST_KEYCLOAK_URL / WINDFIRE_TEST_KEYCLOAK_ISSUER_URL override these values.",
   "dev": {
     "host": "localhost",
     "port": 8444,
     "root_ca": "~/opt/windfire/ssl/truststore/WindfireRootCA.crt",
     "keycloak_url": null,
+    "keycloak_issuer_url": null,
     "keycloak_ca": "~/opt/keycloak/ssl/truststore/WindfireKeycloakRootCA.crt",
     "realm": "windfire",
     "service": "windfire-calendar-srv"
@@ -14,6 +15,7 @@
     "port": null,
     "root_ca": "~/opt/windfire/ssl/truststore/WindfireRootCA.crt",
     "keycloak_url": null,
+    "keycloak_issuer_url": null,
     "keycloak_ca": "~/opt/keycloak/ssl/truststore/WindfireKeycloakRootCA.crt",
     "realm": "windfire",
     "service": "windfire-calendar-srv"
@@ -23,6 +25,7 @@
     "port": 8444,
     "root_ca": "~/opt/windfire/ssl/truststore/WindfireRootCA.crt",
     "keycloak_url": "https://raspberry01:8443",
+    "keycloak_issuer_url": "https://auth.windfire.cc",
     "keycloak_ca": "~/opt/keycloak/ssl/truststore/WindfireKeycloakRootCA.crt",
     "realm": "windfire",
     "service": "windfire-calendar-srv"
