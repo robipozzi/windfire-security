@@ -406,12 +406,14 @@ With a public hostname (`keycloak_public_url`, e.g. `https://auth.windfire.cc` t
 1. reads a partial export of `windfire` (realm settings, clients, client scopes and mappers, roles, groups), which never changes that realm;
 2. creates `windfire-dev` from it if it is missing, without database ids, masked secrets or key providers, and with the `/realms/windfire` and `/admin/windfire` paths of the built-in clients (`account`, `account-console`, `security-admin-console`) rewritten to `windfire-dev` (`filter_plugins/keycloak_realm.py`). It never overwrites an existing `windfire-dev`;
 3. pins the `windfire-dev` Frontend URL (realm attribute `frontendUrl`) to `keycloak_internal_url`;
-4. checks that the issuer and the authorization endpoint are on `https://raspberry01:8443` and that the login page answers without linking to the public URL.
+4. copies the users of `windfire` (`keycloak_dev_copy_users`, on by default) on every run, through `partialImport` with `ifResourceExists: SKIP`: users already in `windfire-dev` are left as they are, new ones in `windfire` are added. Each copy keeps the profile, attributes, required actions, direct realm and client roles (the `windfire` default role becomes the `windfire-dev` one) and group memberships, but no credentials. Service accounts are not copied: the clients' own service account users come with the clients;
+5. checks that the issuer and the authorization endpoint are on `https://raspberry01:8443` and that the login page answers without linking to the public URL.
 
 `--remove` deletes `windfire-dev` (its users and client secrets are lost). `keycloak.conf`, the `windfire` realm, the tunnel and Cloudflare Access are never changed.
 
 What the copy does not carry, to do once in the admin console (`https://raspberry01:8443/admin/master/console/#/windfire-dev`):
-- **Users**: a partial export has none. Create the dev users and give them their client roles (e.g. on `windfire-restaurants-api`).
+- **User credentials**: passwords and OTP can't be read through the admin API, so the copied users can't log in until you set a password (*Users > user > Credentials > Set password*). Users who had OTP configure it again at their first login only if `Configure OTP` is in their required actions.
+- **Service account roles**: roles given to a client's service account in `windfire` (*Clients > client > Service accounts roles*) are not copied.
 - **Client secrets**: confidential clients get new ones (*Clients > client > Credentials*). Put them, with `"realm": "windfire-dev"`, in the local `server/config/service_config.json`.
 - **Later changes**: a client or mapper added to `windfire` later is not copied. Add it by hand, or delete and recreate the dev realm.
 
