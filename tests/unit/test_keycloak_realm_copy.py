@@ -22,6 +22,10 @@ EXPORT = {
         "client": {"windfire-restaurants-api": [{"id": "r2", "name": "restaurants-reader", "containerId": "client-uuid"}]},
     },
     "clients": [
+        {"id": "acc-uuid", "clientId": "account-console", "rootUrl": "${authBaseUrl}",
+         "baseUrl": "/realms/windfire/account/", "redirectUris": ["/realms/windfire/account/*"]},
+        {"id": "adm-uuid", "clientId": "security-admin-console", "baseUrl": "/admin/windfire/console/",
+         "redirectUris": ["/admin/windfire/console/*"]},
         {"id": "client-uuid", "clientId": "windfire-ui", "publicClient": True,
          "protocolMappers": [{"id": "mapper-uuid", "name": "audience"}]},
         {"id": "client2-uuid", "clientId": "windfire-calendar-srv", "publicClient": False, "secret": "**********",
@@ -57,7 +61,7 @@ def test_drops_every_database_id():
 def test_drops_masked_secrets_and_key_providers():
     realm = copy()
     assert "**********" not in json.dumps(realm)
-    assert "secret" not in realm["clients"][1]
+    assert "secret" not in realm["clients"][3]
     assert realm["smtpServer"] == {"host": "smtp"}
     assert "org.keycloak.keys.KeyProvider" not in realm["components"]
     assert "org.keycloak.userprofile.UserProfileProvider" in realm["components"]
@@ -65,8 +69,9 @@ def test_drops_masked_secrets_and_key_providers():
 
 def test_keeps_clients_roles_and_mappers():
     realm = copy()
-    assert [c["clientId"] for c in realm["clients"]] == ["windfire-ui", "windfire-calendar-srv"]
-    assert realm["clients"][0]["protocolMappers"] == [{"name": "audience"}]
+    assert [c["clientId"] for c in realm["clients"]] == [
+        "account-console", "security-admin-console", "windfire-ui", "windfire-calendar-srv"]
+    assert realm["clients"][2]["protocolMappers"] == [{"name": "audience"}]
     assert realm["roles"]["client"]["windfire-restaurants-api"] == [{"name": "restaurants-reader"}]
 
 
@@ -74,3 +79,19 @@ def test_source_export_unchanged():
     before = json.dumps(EXPORT, sort_keys=True)
     copy()
     assert json.dumps(EXPORT, sort_keys=True) == before
+
+
+def test_rewrites_built_in_client_paths_to_the_new_realm():
+    account, admin = copy()["clients"][:2]
+    assert account["baseUrl"] == "/realms/windfire-dev/account/"
+    assert account["redirectUris"] == ["/realms/windfire-dev/account/*"]
+    assert account["rootUrl"] == "${authBaseUrl}"
+    assert admin["baseUrl"] == "/admin/windfire-dev/console/"
+    assert admin["redirectUris"] == ["/admin/windfire-dev/console/*"]
+
+
+def test_leaves_other_urls_and_longer_realm_names_alone():
+    rename = keycloak_realm._path_renamer("windfire", "windfire-dev")
+    assert rename("https://app.windfire.cc/") == "https://app.windfire.cc/"
+    assert rename("/realms/windfire-other/account/") == "/realms/windfire-other/account/"
+    assert rename("https://localhost:3000/*") == "https://localhost:3000/*"
