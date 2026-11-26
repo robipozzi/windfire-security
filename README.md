@@ -406,7 +406,7 @@ With a public hostname (`keycloak_public_url`, e.g. `https://auth.windfire.cc` t
 1. reads a partial export of `windfire` (realm settings, clients, client scopes and mappers, roles, groups), which never changes that realm;
 2. creates `windfire-dev` from it if it is missing, without database ids, masked secrets or key providers, and with the `/realms/windfire` and `/admin/windfire` paths of the built-in clients (`account`, `account-console`, `security-admin-console`) rewritten to `windfire-dev` (`filter_plugins/keycloak_realm.py`). It never overwrites an existing `windfire-dev`;
 3. pins the `windfire-dev` Frontend URL (realm attribute `frontendUrl`) to `keycloak_internal_url`;
-4. checks that the issuer and the authorization endpoint are on `https://raspberry01:8443` and that the login form posts there.
+4. checks that the issuer and the authorization endpoint are on `https://raspberry01:8443` and that the login page answers without linking to the public URL.
 
 `--remove` deletes `windfire-dev` (its users and client secrets are lost). `keycloak.conf`, the `windfire` realm, the tunnel and Cloudflare Access are never changed.
 

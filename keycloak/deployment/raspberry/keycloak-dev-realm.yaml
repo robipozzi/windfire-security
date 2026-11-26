@@ -194,21 +194,22 @@
         status_code: [200, 400]
       register: dev_login_page
       run_once: true
-    - name: Fail if the login form does not post to "{{ keycloak_internal_url }}"
-      # Without the pinned Frontend URL the form would post to keycloak_public_url (Cloudflare Access, cookie lost)
+    - name: Fail if the dev realm login page is refused or sends the browser to "{{ keycloak_public_url }}"
+      # The discovery check above already proves the Frontend URL is internal (Keycloak builds the login-actions
+      # URLs from the same setting). The page itself is only checked for what must not be there: a link to the public
+      # URL, where the login would go through Cloudflare Access and lose the session cookie. Its markup is not
+      # parsed (the login theme decides how the form action is written: relative, absolute or inside a script).
       assert:
         that:
           - dev_login_page.status == 200
-          # Keycloak writes the action relative (/realms/...) when the Frontend URL is the origin the page was
-          # requested on, absolute otherwise: either way it must not leave keycloak_internal_url
-          - dev_login_page.content is search('action="(' ~ (keycloak_internal_url | regex_escape) ~ ')?/realms/' ~ (keycloak_dev_realm | regex_escape) ~ '/login-actions/')
+          - not (keycloak_public_hostname | bool) or keycloak_public_url ~ '/realms/' ~ keycloak_dev_realm not in dev_login_page.content
         fail_msg: >-
           {{ (dev_login_page.status == 400) | ternary(
           'Keycloak refused the account-console redirect URI (HTTP 400, Invalid parameter: redirect_uri): the built-in
           clients still point at /realms/' ~ keycloak_dev_source_realm ~ '/. A realm created before the path rewrite in
           filter_plugins/keycloak_realm.py has this problem: run create-dev-realm.sh --remove, then create-dev-realm.sh.',
-          'The ' ~ keycloak_dev_realm ~ ' login form does not post to ' ~ dev_issuer ~ '/login-actions/ (form action: '
-          ~ (dev_login_page.content | regex_search('action="[^"]*"') | default('none found', true)) ~ ')') }}
+          'The ' ~ keycloak_dev_realm ~ ' login page links to ' ~ keycloak_public_url ~ '/realms/' ~ keycloak_dev_realm
+          ~ ': its Frontend URL is not ' ~ keycloak_internal_url ~ ' (Realm settings > General > Frontend URL).') }}
         quiet: true
       run_once: true
     - name: Summary
