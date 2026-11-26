@@ -11,6 +11,16 @@ keycloak_tls_group: keycloak
 keycloak_service: keycloak
 keycloak_user: keycloak
 keycloak_https_port: 8443
+# Internal URL: admin console and back-end calls (auth server token/userinfo/JWKS) always use it
+keycloak_internal_url: "https://{{ inventory_hostname }}:{{ keycloak_https_port }}"
+# Public URL (hostname v2 'hostname', issuer of the application realms), e.g. the cloudflared tunnel URL: https, no trailing slash.
+# Default = internal URL, nothing changes. When it differs, keycloak.conf also gets hostname-admin (internal URL),
+# hostname-backchannel-dynamic=true, proxy-headers=xforwarded and proxy-trusted-addresses=127.0.0.1 (cloudflared on localhost),
+# and keycloak-tls-deploy.yaml pins the master realm Frontend URL to the internal URL (admin login stays internal;
+# needs WINDFIRE_KC_ADMIN_USERNAME/PASSWORD or asks for them).
+# Changing it changes the token issuer: set KEYCLOAK_ISSUER_URL of the auth server to the same URL (deployment/deploy.sh)
+keycloak_public_url: "https://auth.windfire.cc"
+keycloak_public_hostname: "{{ keycloak_public_url != keycloak_internal_url }}"
 # Old self-signed certificate and key, moved to a backup folder after a successful switch
 old_server_cert: server.crt.pem
 old_server_key: server.key.pem

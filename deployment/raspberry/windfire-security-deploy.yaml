@@ -11,6 +11,8 @@
     src_dir: "{{ playbook_dir }}"
     mode: u=rwx
     keycloak_server_url: "{{ lookup('env', 'KEYCLOAK_SERVER_URL') }}"
+    # Token issuer (Keycloak's public hostname), defaults to the server URL
+    keycloak_issuer_url: "{{ lookup('env', 'KEYCLOAK_ISSUER_URL') | default(keycloak_server_url, true) }}"
   vars_files:
     - "{{ src_dir }}/conf/config.yaml"
   tasks:
