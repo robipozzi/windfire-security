@@ -56,6 +56,13 @@ def load_env_cfg(name):
         cfg["keycloak_url"] = _env_file_value("KEYCLOAK_SERVER_URL")
     if cfg.get("keycloak_url"):
         cfg["keycloak_url"] = cfg["keycloak_url"].rstrip("/")
+    # Base URL of the issuer in Keycloak's tokens (its public hostname), as the server's KEYCLOAK_ISSUER_URL:
+    # null = KEYCLOAK_ISSUER_URL from server/.env, and unset or empty there = keycloak_url, like the server
+    if os.getenv("WINDFIRE_TEST_KEYCLOAK_ISSUER_URL", "").strip():
+        cfg["keycloak_issuer_url"] = os.environ["WINDFIRE_TEST_KEYCLOAK_ISSUER_URL"].strip()
+    elif cfg.get("keycloak_issuer_url") is None and cfg.get("host"):
+        cfg["keycloak_issuer_url"] = _env_file_value("KEYCLOAK_ISSUER_URL")
+    cfg["keycloak_issuer_url"] = (cfg.get("keycloak_issuer_url") or cfg.get("keycloak_url") or "").rstrip("/") or None
     for key in ("root_ca", "keycloak_ca"):
         if cfg.get(key):
             cfg[key] = os.path.expanduser(cfg[key])
