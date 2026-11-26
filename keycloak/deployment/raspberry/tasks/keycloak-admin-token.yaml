@@ -1,6 +1,6 @@
 ---
 # Get a master realm admin token as admin-cli into kc_admin_token, or fail with Keycloak's error and a hint.
-# Imported by keycloak-tls-deploy.yaml (pre-flight and Frontend URL pin), which runs it on the controller
+# Imported by keycloak-tls-deploy.yaml (pre-flight and Frontend URL pin) and keycloak-dev-realm.yaml, which run it on the controller
 # (delegate_to: localhost, become: no, run_once).
 # - With a refresh token from an earlier login of the same run (pre-flight), refresh it first: no new OTP code.
 #   User sessions are persisted in the database (Keycloak 26), so it survives the restart.
