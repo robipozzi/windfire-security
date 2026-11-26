@@ -1,0 +1,10 @@
+# Development realm settings, used by keycloak-dev-realm.yaml (keycloak/deployment/create-dev-realm.sh)
+# The dev realm is a copy of keycloak_dev_source_realm (realm settings, clients, client scopes, mappers, roles, groups;
+# no users, new client secrets, new signing keys) whose Frontend URL is pinned to keycloak_internal_url: its login
+# pages, cookies and token issuer stay on the LAN, so a UI running on localhost logs in without the Cloudflare
+# Tunnel or Cloudflare Access. The source realm is only read, never changed.
+keycloak_dev_realm: windfire-dev
+keycloak_dev_realm_display_name: Windfire DEV
+keycloak_dev_source_realm: windfire
+# present: create the realm if missing (never overwritten) and pin its Frontend URL; absent: delete the realm
+keycloak_dev_realm_state: present

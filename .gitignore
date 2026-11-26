@@ -31,3 +31,4 @@ ssl/*.csrtests/windfire-security-suite/
 tests/reports/
 tests/**/__pycache__/
 tests/.pytest_cache/
+keycloak/**/__pycache__/
