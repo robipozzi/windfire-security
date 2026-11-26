@@ -404,7 +404,7 @@ With a public hostname (`keycloak_public_url`, e.g. `https://auth.windfire.cc` t
 
 **[create-dev-realm.sh](keycloak/deployment/create-dev-realm.sh)** `[--remove] [-y]` runs **[keycloak-dev-realm.yaml](keycloak/deployment/raspberry/keycloak-dev-realm.yaml)** on this computer through the admin REST API, as `admin-cli` with `WINDFIRE_KC_ADMIN_USERNAME/PASSWORD` (asked when unset) and an OTP code, like the master realm pin in `keycloak-tls-deploy.yaml`. It needs no SSH and no `pi` sudo password. Settings are in **[keycloak-dev-realm-config.yml](keycloak/deployment/raspberry/conf/keycloak-dev-realm-config.yml)**. The playbook:
 1. reads a partial export of `windfire` (realm settings, clients, client scopes and mappers, roles, groups), which never changes that realm;
-2. creates `windfire-dev` from it if it is missing, without database ids, masked secrets or key providers (`filter_plugins/keycloak_realm.py`). It never overwrites an existing `windfire-dev`;
+2. creates `windfire-dev` from it if it is missing, without database ids, masked secrets or key providers, and with the `/realms/windfire` and `/admin/windfire` paths of the built-in clients (`account`, `account-console`, `security-admin-console`) rewritten to `windfire-dev` (`filter_plugins/keycloak_realm.py`). It never overwrites an existing `windfire-dev`;
 3. pins the `windfire-dev` Frontend URL (realm attribute `frontendUrl`) to `keycloak_internal_url`;
 4. checks that the issuer and the authorization endpoint are on `https://raspberry01:8443` and that the login form posts there.
 

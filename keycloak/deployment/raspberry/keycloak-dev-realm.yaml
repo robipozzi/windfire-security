@@ -191,13 +191,21 @@
         ca_path: "{{ local_root_ca_cert }}"
         validate_certs: yes
         return_content: yes
+        status_code: [200, 400]
       register: dev_login_page
       run_once: true
     - name: Fail if the login form does not post to "{{ keycloak_internal_url }}"
       # Without the pinned Frontend URL the form would post to keycloak_public_url (Cloudflare Access, cookie lost)
       assert:
-        that: dev_login_page.content is search('action="' ~ (dev_issuer | regex_escape) ~ '/login-actions/')
-        fail_msg: "The {{ keycloak_dev_realm }} login form does not post to {{ dev_issuer }}/login-actions/"
+        that:
+          - dev_login_page.status == 200
+          - dev_login_page.content is search('action="' ~ (dev_issuer | regex_escape) ~ '/login-actions/')
+        fail_msg: >-
+          {{ (dev_login_page.status == 400) | ternary(
+          'Keycloak refused the account-console redirect URI (HTTP 400, Invalid parameter: redirect_uri): the built-in
+          clients still point at /realms/' ~ keycloak_dev_source_realm ~ '/. A realm created before the path rewrite in
+          filter_plugins/keycloak_realm.py has this problem: run create-dev-realm.sh --remove, then create-dev-realm.sh.',
+          'The ' ~ keycloak_dev_realm ~ ' login form does not post to ' ~ dev_issuer ~ '/login-actions/') }}
         quiet: true
       run_once: true
     - name: Summary
