@@ -95,3 +95,50 @@ def test_leaves_other_urls_and_longer_realm_names_alone():
     assert rename("https://app.windfire.cc/") == "https://app.windfire.cc/"
     assert rename("/realms/windfire-other/account/") == "/realms/windfire-other/account/"
     assert rename("https://localhost:3000/*") == "https://localhost:3000/*"
+
+
+USERS = [
+    {"id": "u1", "username": "alice", "email": "alice@example.com", "firstName": "Alice", "enabled": True,
+     "emailVerified": True, "createdTimestamp": 1, "totp": True, "access": {"manage": True},
+     "attributes": {"locale": ["it"]}, "requiredActions": ["CONFIGURE_TOTP"],
+     "credentials": [{"type": "password"}], "federatedIdentities": [], "notBefore": 0},
+    {"id": "u2", "username": "service-account-windfire-calendar-srv", "serviceAccountClientId": "windfire-calendar-srv"},
+    {"id": "u3", "username": "bob"},
+]
+ROLE_MAPPINGS = [
+    {"item": {"id": "u1"}, "json": {
+        "realmMappings": [{"id": "r1", "name": "default-roles-windfire"}, {"id": "r2", "name": "admin"}],
+        "clientMappings": {"windfire-restaurants-api": {"id": "c1", "client": "windfire-restaurants-api",
+                                                        "mappings": [{"id": "r3", "name": "restaurants-writer"}]}}}},
+    {"item": {"id": "u2"}, "json": {}},
+    {"item": {"id": "u3"}, "json": {}},
+]
+GROUPS = [
+    {"item": {"id": "u1"}, "json": [{"id": "g1", "name": "editors", "path": "/staff/editors"}]},
+    {"item": {"id": "u2"}, "json": []},
+    {"item": {"id": "u3"}, "json": []},
+]
+
+
+def users_copy():
+    return keycloak_realm.keycloak_users_copy(USERS, ROLE_MAPPINGS, GROUPS, "default-roles-windfire",
+                                              "default-roles-windfire-dev")
+
+
+def test_users_copy_keeps_profile_roles_and_groups():
+    alice = users_copy()[0]
+    assert alice["username"] == "alice"
+    assert alice["email"] == "alice@example.com"
+    assert alice["attributes"] == {"locale": ["it"]}
+    assert alice["requiredActions"] == ["CONFIGURE_TOTP"]
+    assert alice["realmRoles"] == ["default-roles-windfire-dev", "admin"]
+    assert alice["clientRoles"] == {"windfire-restaurants-api": ["restaurants-writer"]}
+    assert alice["groups"] == ["/staff/editors"]
+
+
+def test_users_copy_drops_ids_credentials_and_service_accounts():
+    users = users_copy()
+    assert [u["username"] for u in users] == ["alice", "bob"]
+    for key in ("id", "createdTimestamp", "access", "credentials", "totp", "federatedIdentities", "notBefore"):
+        assert key not in users[0]
+    assert users[1] == {"username": "bob", "realmRoles": [], "clientRoles": {}, "groups": []}

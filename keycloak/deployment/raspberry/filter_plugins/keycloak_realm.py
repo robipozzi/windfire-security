@@ -63,6 +63,43 @@ def keycloak_realm_copy(export, realm, display_name, frontend_url):
     return new
 
 
+# User fields that belong to the source realm's database or to its credentials: never copied
+USER_DROP_KEYS = ("id", "createdTimestamp", "access", "credentials", "federationLink", "federatedIdentities",
+                  "totp", "disableableCredentialTypes", "notBefore", "serviceAccountClientId", "origin", "self")
+
+
+def keycloak_users_copy(users, role_mappings, groups, source_default_role, dev_default_role):
+    """Users of the source realm as a partialImport "users" list for the dev realm.
+
+    `users` is GET /admin/realms/<source>/users (full representation); `role_mappings` and `groups` are the
+    results of GET .../users/<id>/role-mappings and .../users/<id>/groups, as lists of {"item": <user>, "json": ...}
+    (Ansible loop results). Each user keeps username, email, names, attributes, enabled flags and required actions,
+    with its realm roles, client roles and group paths; no ids and no credentials (passwords and OTP are never
+    readable through the admin API: set them in the dev realm). The source realm's default role is mapped to the dev
+    realm's default role, because its name contains the realm name.
+    """
+    by_user = lambda results: {r["item"]["id"]: r.get("json") for r in results}
+    mappings = by_user(role_mappings)
+    user_groups = by_user(groups)
+    out = []
+    for user in users:
+        if user.get("serviceAccountClientId") or user.get("username", "").startswith("service-account-"):
+            continue
+        new = {k: copy.deepcopy(v) for k, v in user.items() if k not in USER_DROP_KEYS}
+        rm = mappings.get(user["id"]) or {}
+        realm_roles = [r["name"] for r in rm.get("realmMappings") or []]
+        new["realmRoles"] = [dev_default_role if n == source_default_role else n for n in realm_roles]
+        client_roles = {}
+        for client_id, mapping in (rm.get("clientMappings") or {}).items():
+            names = [r["name"] for r in mapping.get("mappings") or []]
+            if names:
+                client_roles[mapping.get("client", client_id)] = names
+        new["clientRoles"] = client_roles
+        new["groups"] = [g["path"] for g in user_groups.get(user["id"]) or []]
+        out.append(new)
+    return out
+
+
 class FilterModule(object):
     def filters(self):
-        return {"keycloak_realm_copy": keycloak_realm_copy}
+        return {"keycloak_realm_copy": keycloak_realm_copy, "keycloak_users_copy": keycloak_users_copy}
