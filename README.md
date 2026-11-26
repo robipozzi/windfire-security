@@ -85,6 +85,7 @@ The procedures under **[keycloak/deployment/](keycloak/deployment/)** are:
 | [schedule-keycloak-backup.sh](keycloak/deployment/schedule-keycloak-backup.sh) `[--remove] [-y]` | Installs (or removes) the weekly Keycloak backup on raspberry01, keeping the last 4 |
 | [fetch-keycloak-backups.sh](keycloak/deployment/fetch-keycloak-backups.sh) `[-y]` | Copies the weekly backups to the Mac, encrypts them with sops and removes them from raspberry01 |
 | [restore-keycloak.sh](keycloak/deployment/restore-keycloak.sh) `[-e localhost\|raspberry] [-f <backup>] [-m import\|data] [-p <port>] [-k] [-c] [-y]` | Restores a backup into a scratch Keycloak on the Mac (test) or into raspberry01, and checks realms, clients and users |
+| [create-dev-realm.sh](keycloak/deployment/create-dev-realm.sh) `[--remove] [-y]` | Creates (or deletes) the `windfire-dev` realm on raspberry01, whose login stays on the LAN, for local development |
 | [deploy-keycloak-tls.sh](keycloak/deployment/deploy-keycloak-tls.sh) `[ansible-playbook args, e.g. -e keycloak_force_build=true]` | Deploys a new raspberry01 server certificate and reinstalls the Keycloak systemd unit from its template |
 | [uninstall-keycloak.sh](keycloak/deployment/uninstall-keycloak.sh) `[-y]` | Removes Keycloak from raspberry01 |
 
@@ -397,6 +398,24 @@ Then log in to https://raspberry01:8443/admin. In the `windfire` realm, check Cl
 sudo find /opt/keycloak/restore-<stamp> -type f -exec shred -u {} + && sudo rm -rf /opt/keycloak/restore-<stamp>
 sudo rm -rf /opt/keycloak/keycloak-26.8.1/data.before-restore-<stamp>            # option A only
 ```
+
+#### Development realm for local login
+With a public hostname (`keycloak_public_url`, e.g. `https://auth.windfire.cc` through the Cloudflare Tunnel), every frontend URL of the `windfire` realm goes to that hostname, even when the browser reached Keycloak on `https://raspberry01:8443`: the login form posts to `auth.windfire.cc`, through Cloudflare Access, and Keycloak's session cookie (set on `raspberry01`) is lost. A UI running on `localhost` can't use `auth.windfire.cc` either: its token request is cross-site, so the `CF_Authorization` cookie isn't sent and Access blocks it. Local logins therefore use a separate realm, and production stays as it is.
+
+**[create-dev-realm.sh](keycloak/deployment/create-dev-realm.sh)** `[--remove] [-y]` runs **[keycloak-dev-realm.yaml](keycloak/deployment/raspberry/keycloak-dev-realm.yaml)** on this computer through the admin REST API, as `admin-cli` with `WINDFIRE_KC_ADMIN_USERNAME/PASSWORD` (asked when unset) and an OTP code, like the master realm pin in `keycloak-tls-deploy.yaml`. It needs no SSH and no `pi` sudo password. Settings are in **[keycloak-dev-realm-config.yml](keycloak/deployment/raspberry/conf/keycloak-dev-realm-config.yml)**. The playbook:
+1. reads a partial export of `windfire` (realm settings, clients, client scopes and mappers, roles, groups), which never changes that realm;
+2. creates `windfire-dev` from it if it is missing, without database ids, masked secrets or key providers (`filter_plugins/keycloak_realm.py`). It never overwrites an existing `windfire-dev`;
+3. pins the `windfire-dev` Frontend URL (realm attribute `frontendUrl`) to `keycloak_internal_url`;
+4. checks that the issuer and the authorization endpoint are on `https://raspberry01:8443` and that the login form posts there.
+
+`--remove` deletes `windfire-dev` (its users and client secrets are lost). `keycloak.conf`, the `windfire` realm, the tunnel and Cloudflare Access are never changed.
+
+What the copy does not carry, to do once in the admin console (`https://raspberry01:8443/admin/master/console/#/windfire-dev`):
+- **Users**: a partial export has none. Create the dev users and give them their client roles (e.g. on `windfire-restaurants-api`).
+- **Client secrets**: confidential clients get new ones (*Clients > client > Credentials*). Put them, with `"realm": "windfire-dev"`, in the local `server/config/service_config.json`.
+- **Later changes**: a client or mapper added to `windfire` later is not copied. Add it by hand, or delete and recreate the dev realm.
+
+Local services then use realm `windfire-dev` with `https://raspberry01:8443` both as Keycloak URL and as issuer (the auth server's `KEYCLOAK_ISSUER_URL`, the restaurants backend's `KEYCLOAK_ISSUER_URL`, the UI's `VITE_KEYCLOAK_URL`). `/realms/windfire-dev` is still served on the public hostname, so block it at the tunnel or in Cloudflare Access, like `/realms/master`.
 
 #### Secure and run Keycloak server with TLS self signed certificate
 Keycloak can be configured to run with TLS enabled, loading the required certificate infrastructure using files in PEM format or from a Java Keystore. When both alternatives are configured, the PEM files takes precedence over the Java Keystores.
